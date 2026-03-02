@@ -1620,6 +1620,166 @@ font-size: 0.95rem;
   <!-- DATA LAYER -->
   <div id="mydata" data-myid="{{ my_id }}" style="display:none;"></div>
 
+  <!-- ============================================
+       INCOMING CALL OVERLAY
+       Shown when another user calls you
+       ============================================ -->
+  <style>
+    /* ── Incoming Call Overlay ── */
+    #incomingCallOverlay {
+      display: none;
+      position: fixed; inset: 0; z-index: 9999;
+      align-items: center; justify-content: center;
+      background: rgba(13,13,15,0.72);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      animation: icFadeIn 0.35s ease;
+    }
+    #incomingCallOverlay.active { display: flex; }
+    @keyframes icFadeIn {
+      from { opacity: 0; transform: scale(0.96); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .ic-card {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 40px;
+      padding: 48px 48px 40px;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 20px;
+      text-align: center;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+      max-width: 340px; width: 90%;
+      animation: icSlideUp 0.4s cubic-bezier(0.175,0.885,0.32,1.275);
+    }
+    @keyframes icSlideUp {
+      from { opacity: 0; transform: translateY(40px) scale(0.94); }
+      to   { opacity: 1; transform: translateY(0)   scale(1); }
+    }
+    .ic-ring-wrap {
+      position: relative; width: 120px; height: 120px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ic-pulse {
+      position: absolute; inset: 0; border-radius: 50%;
+      border: 2px solid rgba(225,217,188,0.35);
+      animation: icPulse 2s ease-out infinite;
+    }
+    .ic-pulse:nth-child(2) { animation-delay: 0.65s; }
+    .ic-pulse:nth-child(3) { animation-delay: 1.3s;  }
+    @keyframes icPulse {
+      0%   { transform: scale(1);   opacity: 0.7; }
+      100% { transform: scale(2.2); opacity: 0;   }
+    }
+    .ic-avatar {
+      width: 80px; height: 80px; border-radius: 50%;
+      position: relative; z-index: 2;
+      background: #1A1A1F;
+      border: 2px solid rgba(225,217,188,0.5);
+      overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2rem; font-weight: 800; color: rgba(255,255,255,0.85);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      box-shadow: 0 0 40px rgba(225,217,188,0.2);
+    }
+    .ic-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .ic-caller-name {
+      font-size: 1.5rem; font-weight: 800; color: #fff;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      letter-spacing: -0.3px;
+    }
+    .ic-type-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 14px; border-radius: 20px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.15);
+      font-size: 0.78rem; font-weight: 600;
+      color: rgba(255,255,255,0.65);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .ic-sub {
+      font-size: 0.88rem; font-weight: 500;
+      color: rgba(255,255,255,0.45);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .ic-timer {
+      font-size: 0.8rem; font-weight: 700;
+      color: rgba(225,217,188,0.7);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-variant-numeric: tabular-nums;
+    }
+    .ic-btns {
+      display: flex; gap: 24px; align-items: center;
+      margin-top: 8px;
+    }
+    .ic-btn {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 10px;
+      cursor: pointer; background: none; border: none;
+      transition: transform 0.2s;
+    }
+    .ic-btn:active { transform: scale(0.88); }
+    .ic-btn-ico {
+      width: 68px; height: 68px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 22px rgba(0,0,0,0.4);
+      transition: all 0.3s cubic-bezier(0.175,0.885,0.32,1.275);
+    }
+    .ic-btn-ico:hover { transform: scale(1.08); }
+    .ic-btn.accept .ic-btn-ico { background: #34C759; box-shadow: 0 6px 22px rgba(52,199,89,0.5); }
+    .ic-btn.decline .ic-btn-ico { background: #FF3B30; box-shadow: 0 6px 22px rgba(255,59,48,0.45); }
+    .ic-btn-lbl {
+      font-size: 0.75rem; font-weight: 600;
+      color: rgba(255,255,255,0.6);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    @media (max-width: 480px) {
+      .ic-card { padding: 36px 28px 32px; border-radius: 32px; }
+      .ic-btn-ico { width: 62px; height: 62px; }
+    }
+  </style>
+
+  <div id="incomingCallOverlay">
+    <div class="ic-card">
+      <div class="ic-ring-wrap">
+        <div class="ic-pulse"></div>
+        <div class="ic-pulse"></div>
+        <div class="ic-pulse"></div>
+        <div class="ic-avatar" id="icAvatar">?</div>
+      </div>
+
+      <div class="ic-caller-name" id="icCallerName">Someone</div>
+      <div class="ic-type-badge" id="icTypeBadge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+        </svg>
+        Incoming Audio Call
+      </div>
+      <div class="ic-sub">Incoming call&hellip;</div>
+      <div class="ic-timer" id="icTimer">Ringing 0s</div>
+
+      <div class="ic-btns">
+        <button class="ic-btn decline" onclick="declineIncomingCall()">
+          <div class="ic-btn-ico">
+            <svg viewBox="0 0 24 24" width="30" height="30" fill="white">
+              <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.69.28-.27 0-.52-.11-.71-.29L.29 13.08a.956.956 0 0 1-.28-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.7 4.67c.18.18.29.43.29.71 0 .27-.11.52-.29.7l-2.48 2.48c-.19.18-.44.29-.71.29-.26 0-.51-.1-.69-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" transform="rotate(135 12 12)"/>
+            </svg>
+          </div>
+          <span class="ic-btn-lbl">Decline</span>
+        </button>
+
+        <button class="ic-btn accept" onclick="acceptIncomingCall()">
+          <div class="ic-btn-ico">
+            <svg viewBox="0 0 24 24" width="30" height="30" fill="white">
+              <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+            </svg>
+          </div>
+          <span class="ic-btn-lbl">Accept</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- SCRIPTING (FULLY INTACT LOGIC) -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js   "></script>
   <script>
@@ -2022,7 +2182,8 @@ font-size: 0.95rem;
     function initiateCall(type) {
     if (!currentReceiver || !myId) return;
     const room = 'chat_' + Math.min(myId || 0, currentReceiver) + '_' + Math.max(myId || 0, currentReceiver);
-    socket.emit('incoming_call_notification', { caller: myId, callee: currentReceiver, room: room });
+    // Include call type so the callee knows audio vs video
+    socket.emit('incoming_call_notification', { caller: myId, callee: currentReceiver, room: room, type: type });
     const url = `/call.html?myId=${encodeURIComponent(myId)}&peerId=${encodeURIComponent(currentReceiver)}&isCaller=true&type=${encodeURIComponent(type)}`;
     window.open(url, '_blank', 'noopener,noreferrer,width=900,height=700');
 }
@@ -2034,6 +2195,112 @@ document.querySelectorAll('.call-btn').forEach((btn, idx) => {
         btn.addEventListener('click', () => { initiateCall('video'); });
     }
 });
+
+    // ── INCOMING CALL NOTIFICATION ─────────────────────────────────────────
+    let _icData        = null;  // stores incoming call event payload
+    let _icRingCtx     = null;
+    let _icRingTimer   = null;
+    let _icAutoTimer   = null;
+    let _icElapsed     = 0;
+    let _icElapsedInt  = null;
+
+    function _icPlayRing() {
+        try {
+            _icRingCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const beep = () => {
+                if (!_icRingCtx) return;
+                const o = _icRingCtx.createOscillator();
+                const g = _icRingCtx.createGain();
+                o.connect(g); g.connect(_icRingCtx.destination);
+                o.type = 'sine';
+                o.frequency.setValueAtTime(520, _icRingCtx.currentTime);
+                o.frequency.setValueAtTime(640, _icRingCtx.currentTime + 0.3);
+                g.gain.setValueAtTime(0.25, _icRingCtx.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.001, _icRingCtx.currentTime + 0.9);
+                o.start(_icRingCtx.currentTime);
+                o.stop(_icRingCtx.currentTime + 0.9);
+            };
+            beep();
+            _icRingTimer = setInterval(beep, 1800);
+        } catch(e) {}
+    }
+
+    function _icStopRing() {
+        clearInterval(_icRingTimer); _icRingTimer = null;
+        if (_icRingCtx) { try { _icRingCtx.close(); } catch(e){} _icRingCtx = null; }
+    }
+
+    function showIncomingCall(data) {
+        _icData    = data;
+        _icElapsed = 0;
+
+        const type   = data.type || 'audio';
+        const caller = data.caller;
+
+        // Populate badge
+        const typeBadge = document.getElementById('icTypeBadge');
+        typeBadge.innerHTML = type === 'video'
+            ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg> Incoming Video Call`
+            : `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg> Incoming Audio Call`;
+
+        // Try to resolve caller name
+        document.getElementById('icCallerName').textContent = `User ${caller}`;
+        document.getElementById('icAvatar').textContent     = String(caller).charAt(0);
+        fetch('/recent_chats').then(r => r.json()).then(rows => {
+            const u = rows.find(x => parseInt(x.id) === parseInt(caller));
+            if (u) {
+                document.getElementById('icCallerName').textContent = u.username;
+                document.getElementById('icAvatar').textContent     = u.username.charAt(0).toUpperCase();
+                if (u.profile_pic && u.profile_pic !== 'default_profile.png') {
+                    document.getElementById('icAvatar').innerHTML = `<img src="/static/uploads/${u.profile_pic}" style="width:100%;height:100%;object-fit:cover;">`;
+                }
+            }
+        }).catch(() => {});
+
+        // Show overlay + ring
+        document.getElementById('incomingCallOverlay').classList.add('active');
+        _icPlayRing();
+
+        // Elapsed timer
+        _icElapsedInt = setInterval(() => {
+            _icElapsed++;
+            const el = document.getElementById('icTimer');
+            if (el) el.textContent = `Ringing ${_icElapsed}s`;
+        }, 1000);
+
+        // Auto-dismiss after 30s (missed call)
+        _icAutoTimer = setTimeout(() => { hideIncomingCall(); }, 30000);
+    }
+
+    function hideIncomingCall() {
+        _icStopRing();
+        clearTimeout(_icAutoTimer);  _icAutoTimer  = null;
+        clearInterval(_icElapsedInt); _icElapsedInt = null;
+        document.getElementById('incomingCallOverlay').classList.remove('active');
+        _icData = null;
+    }
+
+    function acceptIncomingCall() {
+        if (!_icData) return;
+        const { caller, room, type } = _icData;
+        hideIncomingCall();
+        const url = `/call.html?myId=${encodeURIComponent(myId)}&peerId=${encodeURIComponent(caller)}&isCaller=false&type=${encodeURIComponent(type || 'audio')}`;
+        window.open(url, '_blank', 'noopener,noreferrer,width=900,height=700');
+    }
+
+    function declineIncomingCall() {
+        if (!_icData) return;
+        socket.emit('call_ended', { room: _icData.room });
+        hideIncomingCall();
+    }
+
+    // Socket listener – fires when another user calls you
+    socket.on('incoming_call_notification', (data) => {
+        // Only show if not already in a call overlay
+        if (data.callee === myId) {
+            showIncomingCall(data);
+        }
+    });
 
   </script>
 </body>
