@@ -16,18 +16,23 @@
      * UDP (SRTP/DTLS over ICE/UDP)
      * =========================== */
     :root {
-      --sand:         #E1D9BC;
-      --charcoal:     #1A1C23;
-      --ivory:        #F0F0DB;
-      --muted:        #8E9BAE;
-      --call-bg:      #0D0D0F;
-      --call-dark:    #1A1A1F;
-      --glass:        rgba(255,255,255,0.09);
-      --glass-border: rgba(255,255,255,0.14);
-      --blur:         20px;
+      /* light chat palette */
+      --charcoal: #1A1C23;
+      --muted:    #8E9BAE;
+      --sand:     #E1D9BC;
+      --ivory:    #F0F0DB;
+      --white:    #FFFFFF;
+      --card-radius: 40px;
+
+      /* call-specific overrides */
+      --call-bg:   var(--ivory);
+      --call-dark: var(--white);
+      --glass:        rgba(255,255,255,0.85);
+      --glass-border: rgba(245,244,238,0.5);
+      --blur:         24px;
       --danger:       #FF3B30;
       --success:      #34C759;
-      --shadow:       0 8px 32px rgba(0,0,0,0.5);
+      --shadow:       0 8px 32px rgba(26,28,35,0.1);
     }
 
     * {
@@ -41,12 +46,13 @@
       width: 100%; height: 100%;
       overflow: hidden;
       background: var(--call-bg);
+      color: var(--charcoal);
     }
 
     /* ===== BACKGROUND ===== */
     #callBg {
       position: fixed; inset: 0;
-      background: linear-gradient(145deg, #0D0D0F 0%, #140E1C 50%, #0A0A14 100%);
+      background: linear-gradient(145deg, var(--ivory) 0%, #FFFFFF 50%, var(--ivory) 100%);
       z-index: 0; overflow: hidden;
     }
     .glow { position: absolute; border-radius: 50%; filter: blur(90px); }
@@ -72,10 +78,10 @@
       position: fixed;
       bottom: 130px; right: 20px;
       width: 128px; height: 172px;
-      border-radius: 22px;
+      border-radius: var(--card-radius);
       overflow: hidden;
       z-index: 20;
-      box-shadow: 0 8px 36px rgba(0,0,0,0.65), 0 0 0 2px rgba(255,255,255,0.12);
+      box-shadow: var(--shadow);
       cursor: move; touch-action: none;
       transition: box-shadow 0.2s;
     }
@@ -105,6 +111,12 @@
       gap: 20px; text-align: center;
       transition: opacity 0.6s ease;
     }
+     /* the center piece hosts peer avatar/status; we want to keep it visible
+       for audio-only calls so the user picture (or logo) is shown. the
+       fading behaviour when a video connection becomes active is handled in
+       JS, so the additional rule is not needed. */
+     /* body.audio-only #centerPiece { display: none; } */
+
     #centerPiece.fade-out { opacity: 0; pointer-events: none; }
 
     .ring-wrap {
@@ -137,52 +149,45 @@
     }
     .peer-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
-    #peerName {
-      font-size: 2rem; font-weight: 800; color: #fff;
-      text-shadow: 0 2px 24px rgba(0,0,0,0.6);
-      letter-spacing: -0.5px;
-    }
-    #callStatus {
-      font-size: 0.95rem; font-weight: 600;
-      color: rgba(255,255,255,0.55); letter-spacing: 0.6px;
-    }
+    #peerName { display: none; }
+
+    #callStatus { display: none; }
+
     #callDuration {
       font-size: 1.05rem; font-weight: 700;
       color: rgba(225,217,188,0.85);
       display: none; font-variant-numeric: tabular-nums;
     }
-    .call-type-tag {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 5px 14px; border-radius: 20px;
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.12);
-      font-size: 0.78rem; font-weight: 600;
-      color: rgba(255,255,255,0.6);
-    }
+    .call-type-tag { display: none; }
+
 
     /* ===== TOP BAR (video call) ===== */
     #topBar {
       position: fixed; top: 0; left: 0; right: 0;
       padding: calc(env(safe-area-inset-top, 0px) + 20px) 24px 20px;
-      background: linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%);
+      background: linear-gradient(to bottom, rgba(255,255,255,0.85) 0%, transparent 100%);
       z-index: 25;
-      display: flex; align-items: flex-start; justify-content: space-between;
+      display: flex; flex-direction: column; align-items: center;
       pointer-events: none;
       transition: opacity 0.4s ease, transform 0.4s ease;
     }
     #topBar.hidden { opacity: 0; transform: translateY(-8px); }
-    .top-name  { font-size: 1.15rem; font-weight: 700; color: #fff; }
-    #topStatus { font-size: 0.82rem; font-weight: 500; color: rgba(255,255,255,0.55); margin-top: 2px; }
-    #topDuration { font-size: 0.9rem; font-weight: 700; color: rgba(225,217,188,0.85); display: none; font-variant-numeric: tabular-nums; }
+    .top-name  { font-size: 1.15rem; font-weight: 700; color: var(--charcoal); }
+    #topStatus { font-size: 0.82rem; font-weight: 500; color: rgba(26,28,35,0.6); margin-top: 2px; }
+    #topDuration { display: none; }
+    .top-content { display: flex; flex-direction: column; align-items: center; }
+
 
     /* ===== CONTROLS ===== */
     #controls {
       position: fixed; bottom: 0; left: 0; right: 0;
       padding: 20px 32px calc(env(safe-area-inset-bottom, 0px) + 24px);
-      background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%);
+      background: linear-gradient(to top, rgba(255,255,255,0.85) 0%, transparent 100%);
       z-index: 25;
       display: flex; flex-direction: column; align-items: center; gap: 16px;
       transition: opacity 0.4s ease, transform 0.4s ease;
+      border-top-left-radius: 24px;
+      border-top-right-radius: 24px;
     }
     #controls.hidden { opacity: 0; transform: translateY(12px); pointer-events: none; }
 
@@ -190,23 +195,21 @@
 
     .ctrl {
       display: flex; flex-direction: column; align-items: center; gap: 8px;
-      background: none; border: none; cursor: pointer; color: #fff;
+      background: none; border: none; cursor: pointer; color: var(--charcoal);
       transition: transform 0.2s ease;
     }
     .ctrl:active { transform: scale(0.9); }
 
     .ctrl-ico {
       width: 64px; height: 64px; border-radius: 50%;
-      background: var(--glass);
-      backdrop-filter: blur(var(--blur));
-      -webkit-backdrop-filter: blur(var(--blur));
-      border: 1px solid var(--glass-border);
+      /* dark circle so buttons stand out on the light call background */
+      background: var(--charcoal);
       display: flex; align-items: center; justify-content: center;
       transition: all 0.3s cubic-bezier(0.175,0.885,0.32,1.275);
       box-shadow: 0 4px 18px rgba(0,0,0,0.35);
     }
     .ctrl-ico svg { width: 26px; height: 26px; transition: all 0.2s; }
-    .ctrl:hover .ctrl-ico { background: rgba(255,255,255,0.16); transform: scale(1.06); }
+    .ctrl:hover .ctrl-ico { background: rgba(0,0,0,0.55); transform: scale(1.06); }
 
     /* OFF state (muted / camera off / speaker off) */
     .ctrl.off .ctrl-ico {
@@ -284,16 +287,8 @@
     #permError button:hover { transform: translateY(-3px) scale(1.04); box-shadow: 0 8px 28px rgba(225,217,188,0.35); }
 
     /* ===== CONNECTION QUALITY ===== */
-    #quality {
-      position: fixed; top: calc(env(safe-area-inset-top, 0px) + 12px); right: 16px;
-      z-index: 30; display: none;
-      padding: 6px 12px; background: rgba(0,0,0,0.45);
-      backdrop-filter: blur(10px); border-radius: 20px;
-      border: 1px solid rgba(255,255,255,0.1);
-      gap: 3px; align-items: flex-end;
-    }
-    #quality.show { display: flex; }
-    .q-bar { width: 4px; border-radius: 2px; background: #4ADE80; }
+    #quality { display: none !important; }
+
 
     /* ===== TAP OVERLAY (video tap-to-toggle controls) ===== */
     #tapZone { position: fixed; inset: 0; z-index: 18; }
@@ -338,13 +333,13 @@
     </div>
   </div>
 
-  <!-- TOP BAR (shown in video call) -->
+  <!-- TOP BAR -->
   <div id="topBar">
-    <div>
+    <div class="top-content">
       <div class="top-name" id="topName">…</div>
       <div id="topStatus">Calling…</div>
     </div>
-    <div id="topDuration">0:00</div>
+    <!-- duration moved into topStatus when connected -->
   </div>
 
   <!-- TAP ZONE (toggle controls visibility in video mode) -->
@@ -553,8 +548,8 @@
       timerInterval = setInterval(() => {
         const s = Math.floor((Date.now() - callStartTime) / 1000);
         const t = `${Math.floor(s / 60)}:${String(s % 60).padStart(2,'0')}`;
-        callDuration.textContent = t;
-        topDuration.textContent  = t;
+        callDuration.textContent = t; // still updated but hidden
+        topStatus.textContent  = t;    // show timer in status
       }, 1000);
     }
 
@@ -583,11 +578,11 @@
         startTimer();
         callStatus.style.display  = 'none';
         callDuration.style.display = 'block';
-        topDuration.style.display  = 'block';
+        // topDuration removed; status text will show timer
         topStatus.textContent      = '● Connected';
         topStatus.style.color      = '#4ADE80';
         ringWrap.classList.add('no-pulse');
-        qualityEl.classList.add('show');
+        // quality indicator is hidden globally
         statusOverlay.classList.add('gone');
 
         if (CALL_TYPE === 'video') {
@@ -635,9 +630,15 @@
         if (u) {
           peerName.textContent = u.username;
           topName.textContent  = u.username;
+          // default avatar content before we decide what to show
           peerAvatar.textContent = u.username.charAt(0).toUpperCase();
+          // if the user has uploaded a custom picture, show it;
+          // otherwise display the shared default profile logo
           if (u.profile_pic && u.profile_pic !== 'default_profile.png') {
             peerAvatar.innerHTML = `<img src="/static/uploads/${u.profile_pic}" alt="${u.username}">`;
+          } else {
+            // show generic profile logo (same path as other templates)
+            peerAvatar.innerHTML = `<img src="/static/Images/default_profile.png" alt="profile">`;
           }
         }
       } catch (e) { /* silent */ }
@@ -946,6 +947,7 @@
     // ─── MAIN INIT ────────────────────────────────────────────────────────────
     async function init() {
       // Configure UI for call type
+      // add class for audio layout to body
       if (CALL_TYPE === 'video') {
         camBtn.style.display  = 'flex';
         localWrap.style.display = 'block';
@@ -958,6 +960,7 @@
 
         showControls(); // auto-hides after 5s
       } else {
+        document.body.classList.add('audio-only');
         localWrap.classList.add('audio-only');
         remoteVideo.classList.add('hide');
         callTypeTag.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg> Audio Call`;
