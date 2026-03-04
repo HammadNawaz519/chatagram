@@ -76,7 +76,14 @@ socketio = SocketIO(
     max_http_buffer_size=10_000_000   # 10 MB max message (for base64 media)
 )
 
-online_users = {}  # { user_id (int): socket_session_id (str) }
+online_users = {}  # { user_id (int): set of socket_session_id }
+#
+# each connected browser window/tab opens a separate Socket.IO socket.  the
+# original implementation kept only one sid per user, so opening a second
+# socket (e.g. the call popup) would overwrite the first.  when the popup
+# closed the remaining chat socket was forgotten and the user was marked
+# offline.  we now maintain a set and only broadcast offline when the set
+# becomes empty.
 ```
 
 - `manage_session=False` is critical — it tells Flask-SocketIO not to interfere with Flask's session, allowing `session['user_id']` to be read inside socket event handlers.
@@ -142,15 +149,15 @@ def get_db():
 
 #### messages table
 
-| Column      | Type                                 | Notes                         |
-| ----------- | ------------------------------------ | ----------------------------- |
-| id          | INT PK AI                            | Primary key                   |
-| sender_id   | INT FK → users.id                    |                               |
-| receiver_id | INT FK → users.id                    |                               |
-| message     | LONGTEXT                             | Text content or file URL path |
-| type        | ENUM('text','voice','image','video') | Message content type          |
-| is_seen     | TINYINT(1)                           | 0 = unread, 1 = seen          |
-| timestamp   | DATETIME                             | DEFAULT CURRENT_TIMESTAMP     |
+| Column      | Type                                         | Notes                         |
+| ----------- | -------------------------------------------- | ----------------------------- |
+| id          | INT PK AI                                    | Primary key                   |
+| sender_id   | INT FK → users.id                            |                               |
+| receiver_id | INT FK → users.id                            |                               |
+| message     | LONGTEXT                                     | Text content or file URL path |
+| type        | ENUM('text','voice','image','video','call')  | Message content type          |
+| is_seen     | TINYINT(1)                                   | 0 = unread, 1 = seen          |
+| timestamp   | DATETIME                                     | DEFAULT CURRENT_TIMESTAMP     |
 
 ### 4.5 HTTP Routes
 

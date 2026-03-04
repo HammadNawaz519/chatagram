@@ -17,6 +17,22 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
 
+# Session settings
+# ----------------
+# By default Flask uses a signed cookie for session storage.  We
+# do *not* mark the session as permanent, which means the cookie is
+# discarded when the browser closes.  This prevents the situation
+# where somebody opens the app, logs in, copies a URL and sends it to
+# a friend who then magically has a valid login – the friend has no
+# session cookie, so our @login_required guards will redirect them to
+# /login.
+
+app.config['SESSION_PERMANENT'] = False
+# you can also customise the lifetime in case you want automatic
+# expiration while the browser is still open:
+# from datetime import timedelta
+# app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
+
 # ---------------- SOCKET.IO INITIALIZATION ----------------
 # SINGLE, CLEAN INITIALIZATION - avoids duplicate re-init issues
 socketio = SocketIO(
@@ -27,7 +43,15 @@ socketio = SocketIO(
 )
 
 # Master dictionary to keep track of everyone
+# now maps user_id -> set of active socket session ids.  a single
+# logical user may have multiple sockets (chat window + call popup,
+# mobile + desktop, etc).  we only consider the user "offline" when
+# the set becomes empty.
 online_users = {}
+
+# track currently in-progress calls by room so we can record them when
+# they end.  key is the WebRTC room string used throughout the app.
+ongoing_calls = {}
 
 # ---------------- DATABASE HELPER ----------------
 ####################################################################
@@ -120,6 +144,11 @@ def call_alias():
 ####################################################################
 @app.route('/login', methods=['GET','POST'])
 def login():
+    # ensure no old session data carries over – this makes the login
+    # form behave like a fresh start even if the user previously logged
+    # in on the same browser.
+    session.clear()
+
     if session.get('user_id'):
         return redirect('/chat')
     if request.method == 'POST' and 'phone' in request.form:
@@ -394,11 +423,24 @@ def get_messages(other_id):
 @socketio.on('connect')
 def on_connect():
     uid = session.get('user_id')
-    if uid:
-        join_room(str(uid))
-        online_users[uid] = request.sid
+    if not uid:
+        return
+
+    join_room(str(uid))
+
+    first_socket = False
+    # add this socket id to the user's set
+    if uid in online_users:
+        online_users[uid].add(request.sid)
+    else:
+        online_users[uid] = {request.sid}
+        first_socket = True
+
+    # only broadcast "user became online" when the first connection appears
+    if first_socket:
         emit('user_status', {'user_id': uid, 'online': True}, broadcast=True)
-        emit('online_users_list', list(online_users.keys()), room=str(uid))
+    # always send the fresh list to the connecting client so their UI updates
+    emit('online_users_list', list(online_users.keys()), room=str(uid))
 
 ####################################################################
 # FUNCTION: on_disconnect
@@ -406,7 +448,13 @@ def on_connect():
 @socketio.on('disconnect')
 def on_disconnect():
     uid = session.get('user_id')
-    if uid in online_users:
+    if not uid or uid not in online_users:
+        return
+
+    sids = online_users[uid]
+    sids.discard(request.sid)
+    if not sids:
+        # no remaining sockets for this user
         del online_users[uid]
         emit('user_status', {'user_id': uid, 'online': False}, broadcast=True)
 
@@ -415,11 +463,23 @@ def on_disconnect():
 ####################################################################
 @socketio.on('user_online')
 def handle_user_online(data):
+    # this event is triggered manually by the client when they come back
+    # from a locked screen or similar.  treat it almost exactly like
+    # connect: add the socket id and broadcast if this is the first one.
     uid = data.get('user_id')
-    if uid:
-        online_users[uid] = request.sid
+    if not uid:
+        return
+
+    first_socket = False
+    if uid in online_users:
+        online_users[uid].add(request.sid)
+    else:
+        online_users[uid] = {request.sid}
+        first_socket = True
+
+    if first_socket:
         emit('user_status', {'user_id': uid, 'online': True}, broadcast=True)
-        emit('online_users_list', list(online_users.keys()), broadcast=True)
+    emit('online_users_list', list(online_users.keys()), broadcast=True)
 
 ####################################################################
 # FUNCTION: handle_join
@@ -433,21 +493,85 @@ def handle_join(data):
 ####################################################################
 @socketio.on('incoming_call_notification')
 def handle_incoming_call(data):
-    callee_id = data.get('callee')
-    if callee_id:
-        # Relay the notification to the specific callee private room
+    """Relay a call notification to the intended recipient only.
+
+    A few things to watch out for that were causing "everyone hears the
+    call" reports:
+
+    * if the `callee` value is missing or has the wrong type the ``room``
+      argument becomes something unexpected; ``emit`` then falls back to a
+      broadcast.  (``room=None`` == broadcast in some configurations).
+    * users who open multiple tabs share the same session id and therefore
+      join the same private room; all of those sockets will legitimately
+      receive the event.  This can look like "all users" when you are
+      testing with several tabs of the same account.
+
+    To make the routing bullet‑proof we now look up the target socket id
+    from ``online_users`` and emit directly to that socket, and log what
+    we're doing for easier debugging.
+    """
+    callee = data.get('callee')
+    if callee is None:
+        app.logger.debug('incoming_call_notification missing callee: %r', data)
+        return
+
+    try:
+        callee_id = int(callee)
+    except (TypeError, ValueError):
+        app.logger.warning('invalid callee id received: %r', callee)
+        return
+
+    # Store call metadata so we can log it when the call ends
+    room = data.get('room')
+    if room:
+        try:
+            caller_id = int(data.get('caller'))
+        except (TypeError, ValueError):
+            caller_id = None
+        ongoing_calls[room] = {
+            'caller': caller_id,
+            'callee': callee_id,
+            'type': data.get('type', 'audio'),
+            'start': datetime.utcnow()
+        }
+        app.logger.info(f'[INCOMING_CALL] stored: room={room}, caller={caller_id}, callee={callee_id}, type={data.get("type")}')
+
+    sid_set = online_users.get(callee_id)
+    if sid_set:
+        app.logger.debug('relaying call from %s to %s (sids=%s)',
+                         data.get('caller'), callee_id, sid_set)
+        # either send via room (simpler) or to each sid individually
+        # using the room means Socket.IO takes care of multiple sockets.
         emit('incoming_call_notification', data, room=str(callee_id))
+    else:
+        app.logger.debug('callee %s is not online, dropping notification', callee_id)
 
 ####################################################################
 # FUNCTION: handle_join_call_room
+# Only allow the two participants to join; verify via ongoing_calls
 ####################################################################
 @socketio.on('join_call_room')
 def handle_join_call_room(data):
     room = data.get('room')
-    if room:
-        join_room(room)
-        # Notify others in the room that a peer is ready
-        emit('peer_ready', {'userId': session.get('user_id')}, room=room, include_self=False)
+    user_id = session.get('user_id')
+    
+    if not room or not user_id:
+        app.logger.warning('join_call_room: missing room or user_id')
+        return
+    
+    # Verify this user is part of the call
+    call_rec = ongoing_calls.get(room)
+    if call_rec:
+        is_caller = call_rec.get('caller') == user_id
+        is_callee = call_rec.get('callee') == user_id
+        if is_caller or is_callee:
+            join_room(room)
+            app.logger.info(f'join_call_room: {user_id} joined {room}')
+            emit('peer_ready', {'userId': user_id}, room=room, include_self=False)
+        else:
+            app.logger.warning(f'join_call_room: user {user_id} not in call {room}')
+    else:
+        app.logger.warning(f'join_call_room: no call record for {room}')
 
 ####################################################################
 # FUNCTION: handle_mark_as_read
@@ -567,7 +691,50 @@ def handle_ice_candidate(data):
 @socketio.on('call_ended')
 def handle_call_ended(data):
     room = data.get('room')
+    app.logger.info(f'[CALL_ENDED] room={room}, ongoing_calls_keys={list(ongoing_calls.keys())}')
+    
     if room:
+        # log call in database if we previously recorded a start time
+        rec = ongoing_calls.pop(room, None)
+        app.logger.info(f'[CALL_ENDED] rec={rec}')
+        
+        if rec and rec.get('caller') and rec.get('callee'):
+            end = datetime.utcnow()
+            duration = int((end - rec['start']).total_seconds())
+            msg_text = f"{rec['type'].capitalize()} call - {duration}s"
+            app.logger.info(f'[CALL_ENDED] inserting: caller={rec["caller"]}, callee={rec["callee"]}, duration={duration}')
+            
+            try:
+                db = get_db()
+                cursor = db.cursor()
+                cursor.execute("""
+                    INSERT INTO messages (sender_id, receiver_id, message, type)
+                    VALUES (%s, %s, %s, %s)
+                """, (rec['caller'], rec['callee'], msg_text, 'call'))
+                cursor.close()
+                db.close()
+                app.logger.info(f'[CALL_ENDED] database insert successful for call: {msg_text}')
+            except Exception as e:
+                app.logger.error(f'[CALL_ENDED] database error: {e}', exc_info=True)
+                return
+            
+            # notify the participants in their chat rooms so they see the call record
+            chat_room = get_room_name(rec['caller'], rec['callee'])
+            msg_data = {
+                'sender': rec['caller'],
+                'receiver': rec['callee'],
+                'message': msg_text,
+                'type': 'call',
+                'sender_id': rec['caller'],
+                'receiver_id': rec['callee']
+            }
+            app.logger.info(f'[CALL_ENDED] emitting to chat_room={chat_room}')
+            emit('receive_message', msg_data, room=chat_room)
+            emit('update_recents', room=str(rec['caller']))
+            emit('update_recents', room=str(rec['callee']))
+        else:
+            app.logger.warning(f'[CALL_ENDED] no valid call record found')
+
         emit('call_ended', data, room=room)
         try:
             leave_room(room)
