@@ -281,6 +281,28 @@ def init_db():
                 INDEX idx_post_user (user_id)
             ) ENGINE=InnoDB
         """)
+        # Post likes table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS post_likes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                post_id INT NOT NULL,
+                user_id INT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_post_like (post_id, user_id),
+                INDEX idx_pl_post (post_id)
+            ) ENGINE=InnoDB
+        """)
+        # Post comments table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS post_comments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                post_id INT NOT NULL,
+                user_id INT NOT NULL,
+                comment TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_pc_post (post_id)
+            ) ENGINE=InnoDB
+        """)
         db.commit()
         cursor.close()
         db.close()
@@ -608,6 +630,101 @@ def api_unfollow():
     return jsonify({'success': True, 'follower_count': fc})
 
 ####################################################################
+# FUNCTION: my followers / following lists
+####################################################################
+@app.route('/api/my_followers')
+def api_my_followers():
+    my_id = session.get('user_id')
+    if not my_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT u.id, u.username, u.profile_pic,
+               (SELECT COUNT(*) FROM follows WHERE follower_id = %s AND following_id = u.id) as i_follow_them
+        FROM follows f
+        JOIN users u ON u.id = f.follower_id
+        WHERE f.following_id = %s
+    """, (my_id, my_id))
+    rows = cursor.fetchall()
+    cursor.close()
+    db.close()
+    return jsonify(rows)
+
+@app.route('/api/my_following')
+def api_my_following():
+    my_id = session.get('user_id')
+    if not my_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT u.id, u.username, u.profile_pic
+        FROM follows f
+        JOIN users u ON u.id = f.following_id
+        WHERE f.follower_id = %s
+    """, (my_id,))
+    rows = cursor.fetchall()
+    cursor.close()
+    db.close()
+    return jsonify(rows)
+
+@app.route('/api/remove_follower', methods=['POST'])
+def api_remove_follower():
+    my_id = session.get('user_id')
+    if not my_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.get_json()
+    target_id = data.get('user_id')
+    if not target_id or int(target_id) == my_id:
+        return jsonify({'error': 'Invalid'}), 400
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("DELETE FROM follows WHERE follower_id = %s AND following_id = %s", (int(target_id), my_id))
+    db.commit()
+    cursor.execute("SELECT COUNT(*) as cnt FROM follows WHERE following_id = %s", (my_id,))
+    fc = cursor.fetchone()['cnt']
+    cursor.close()
+    db.close()
+    return jsonify({'success': True, 'follower_count': fc})
+
+@app.route('/api/user/<int:uid>/followers')
+def api_user_followers(uid):
+    my_id = session.get('user_id')
+    if not my_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT u.id, u.username, u.profile_pic
+        FROM follows f
+        JOIN users u ON u.id = f.follower_id
+        WHERE f.following_id = %s
+    """, (uid,))
+    rows = cursor.fetchall()
+    cursor.close()
+    db.close()
+    return jsonify(rows)
+
+@app.route('/api/user/<int:uid>/following')
+def api_user_following(uid):
+    my_id = session.get('user_id')
+    if not my_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT u.id, u.username, u.profile_pic
+        FROM follows f
+        JOIN users u ON u.id = f.following_id
+        WHERE f.follower_id = %s
+    """, (uid,))
+    rows = cursor.fetchall()
+    cursor.close()
+    db.close()
+    return jsonify(rows)
+
+####################################################################
 # FUNCTION: block
 ####################################################################
 @app.route('/api/block', methods=['POST'])
@@ -849,11 +966,18 @@ def get_statuses():
         FROM statuses s
         JOIN users u ON u.id = s.user_id
         WHERE s.expires_at > NOW()
+          AND (s.user_id = %s
+               OR s.user_id IN (SELECT following_id FROM follows WHERE follower_id = %s)
+               OR s.user_id IN (SELECT follower_id FROM follows WHERE following_id = %s))
         ORDER BY s.user_id, s.created_at ASC
-    """, (uid,))
+    """, (uid, uid, uid, uid))
     statuses = cursor.fetchall()
     cursor.close()
     db.close()
+    for s in statuses:
+        for key in ('created_at', 'expires_at'):
+            if s.get(key):
+                s[key] = str(s[key])
     grouped = {}
     for s in statuses:
         k = s['user_id']
@@ -942,6 +1066,29 @@ def get_my_posts():
     cursor = db.cursor(dictionary=True)
     cursor.execute("SELECT * FROM posts WHERE user_id = %s ORDER BY created_at DESC", (uid,))
     posts = cursor.fetchall()
+    for p in posts:
+        if p.get('created_at'):
+            p['created_at'] = str(p['created_at'])
+    cursor.close()
+    db.close()
+    return jsonify(posts)
+
+@app.route('/api/posts')
+def get_all_posts():
+    uid = session.get('user_id')
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT p.*, u.username, u.profile_pic
+        FROM posts p JOIN users u ON u.id = p.user_id
+        ORDER BY p.created_at DESC LIMIT 50
+    """,)
+    posts = cursor.fetchall()
+    for p in posts:
+        if p.get('created_at'):
+            p['created_at'] = str(p['created_at'])
     cursor.close()
     db.close()
     return jsonify(posts)
@@ -971,6 +1118,76 @@ def delete_post(post_id):
     cursor.close()
     db.close()
     return jsonify({'success': True})
+
+# ---- POST INTERACTIONS ----
+
+@app.route('/api/post/<int:post_id>/like', methods=['POST'])
+def like_post(post_id):
+    uid = session.get('user_id')
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT id FROM post_likes WHERE post_id=%s AND user_id=%s", (post_id, uid))
+    existing = cursor.fetchone()
+    cur2 = db.cursor()
+    if existing:
+        cur2.execute("DELETE FROM post_likes WHERE post_id=%s AND user_id=%s", (post_id, uid))
+        liked = False
+    else:
+        cur2.execute("INSERT INTO post_likes (post_id, user_id) VALUES (%s, %s)", (post_id, uid))
+        liked = True
+    cursor.execute("SELECT COUNT(*) as cnt FROM post_likes WHERE post_id=%s", (post_id,))
+    count = cursor.fetchone()['cnt']
+    cur2.close()
+    cursor.close()
+    db.close()
+    return jsonify({'liked': liked, 'count': count})
+
+@app.route('/api/post/<int:post_id>/comments')
+def get_post_comments(post_id):
+    uid = session.get('user_id')
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT pc.*, u.username, u.profile_pic
+        FROM post_comments pc
+        JOIN users u ON u.id = pc.user_id
+        WHERE pc.post_id = %s
+        ORDER BY pc.created_at ASC
+    """, (post_id,))
+    comments = cursor.fetchall()
+    for c in comments:
+        if c.get('created_at'):
+            c['created_at'] = str(c['created_at'])
+    cursor.close()
+    db.close()
+    return jsonify(comments)
+
+@app.route('/api/post/<int:post_id>/comment', methods=['POST'])
+def add_post_comment(post_id):
+    uid = session.get('user_id')
+    if not uid:
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.get_json()
+    comment = (data.get('comment') or '').strip()[:500]
+    if not comment:
+        return jsonify({'error': 'Empty comment'}), 400
+    db = get_db()
+    cur2 = db.cursor()
+    cur2.execute("INSERT INTO post_comments (post_id, user_id, comment) VALUES (%s,%s,%s)",
+                 (post_id, uid, comment))
+    cur2.close()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT username, profile_pic FROM users WHERE id=%s", (uid,))
+    u = cursor.fetchone()
+    cursor.execute("SELECT COUNT(*) as cnt FROM post_comments WHERE post_id=%s", (post_id,))
+    cnt = cursor.fetchone()['cnt']
+    cursor.close()
+    db.close()
+    return jsonify({'success': True, 'username': u['username'], 'profile_pic': u['profile_pic'], 'comment': comment, 'count': cnt})
 
 # ---- REELS ROUTES ----
 
@@ -1009,11 +1226,15 @@ def get_reels():
     cursor.execute("""
         SELECT r.*, u.username, u.profile_pic,
                (SELECT COUNT(*) FROM reel_likes rl WHERE rl.reel_id = r.id) as like_count,
-               (SELECT COUNT(*) FROM reel_likes rl WHERE rl.reel_id = r.id AND rl.user_id = %s) as liked_by_me
+               (SELECT COUNT(*) FROM reel_likes rl WHERE rl.reel_id = r.id AND rl.user_id = %s) as liked_by_me,
+               (SELECT COUNT(*) FROM reel_comments rc WHERE rc.reel_id = r.id) as comment_count
         FROM reels r JOIN users u ON u.id = r.user_id
         ORDER BY r.created_at DESC LIMIT 50
     """, (uid,))
     reels = cursor.fetchall()
+    for r in reels:
+        if r.get('created_at'):
+            r['created_at'] = str(r['created_at'])
     cursor.close()
     db.close()
     return jsonify(reels)
@@ -1075,7 +1296,7 @@ def get_reel_comments(reel_id):
     db = get_db()
     cursor = db.cursor(dictionary=True)
     cursor.execute("""
-        SELECT rc.id, rc.comment, rc.created_at, u.username, u.profile_pic
+        SELECT rc.id, rc.user_id, rc.comment, rc.created_at, u.username, u.profile_pic
         FROM reel_comments rc
         JOIN users u ON rc.user_id = u.id
         WHERE rc.reel_id = %s
@@ -1089,6 +1310,7 @@ def get_reel_comments(reel_id):
     return jsonify(comments)
 
 @app.route('/api/reel/<int:reel_id>/comments', methods=['POST'])
+@app.route('/api/reel/<int:reel_id>/comment', methods=['POST'])
 def post_reel_comment(reel_id):
     uid = session.get('user_id')
     if not uid:
@@ -1110,9 +1332,11 @@ def post_reel_comment(reel_id):
     cur2.close()
     cursor.execute("SELECT username, profile_pic FROM users WHERE id=%s", (uid,))
     me = cursor.fetchone()
+    cursor.execute("SELECT COUNT(*) as cnt FROM reel_comments WHERE reel_id=%s", (reel_id,))
+    cc = cursor.fetchone()['cnt']
     cursor.close()
     db.close()
-    return jsonify({'success': True, 'username': me['username'], 'profile_pic': me.get('profile_pic','')})
+    return jsonify({'success': True, 'username': me['username'], 'profile_pic': me.get('profile_pic',''), 'count': cc})
 
 # ---- SONGS ROUTES ----
 

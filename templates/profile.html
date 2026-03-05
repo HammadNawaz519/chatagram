@@ -165,6 +165,14 @@
     .pf-stat+.pf-stat{border-left:1px solid var(--glass-border)}
     .pf-stat-num{font-weight:800;font-size:1.1rem;line-height:1.2;color:var(--charcoal)}
     .pf-stat-lbl{font-size:.62rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-top:2px}
+    button.pf-stat{
+      border:none;background:none;cursor:pointer;
+      font-family:'Plus Jakarta Sans',sans-serif;
+      transition:background .2s;
+    }
+    button.pf-stat *{cursor:pointer;user-select:none}
+    button.pf-stat:hover{background:var(--sand)}
+    button.pf-stat:active{background:var(--glass-border)}
 
     /* buttons */
     .pf-actions{display:flex;gap:10px;width:100%}
@@ -415,14 +423,14 @@
           <div class="pf-stat-num" id="postCountEl">{{ post_count }}</div>
           <div class="pf-stat-lbl">Posts</div>
         </div>
-        <div class="pf-stat">
-          <div class="pf-stat-num">{{ follower_count }}</div>
+        <button class="pf-stat" onclick="openFollowModal('followers')">
+          <div class="pf-stat-num" id="followerCountEl">{{ follower_count }}</div>
           <div class="pf-stat-lbl">Followers</div>
-        </div>
-        <div class="pf-stat">
-          <div class="pf-stat-num">{{ following_count }}</div>
+        </button>
+        <button class="pf-stat" onclick="openFollowModal('following')">
+          <div class="pf-stat-num" id="followingCountEl">{{ following_count }}</div>
           <div class="pf-stat-lbl">Following</div>
-        </div>
+        </button>
       </div>
 
       <!-- Action buttons -->
@@ -701,7 +709,6 @@ async function loadMyReels(){
         +'<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>'
         +'</div></div>';
       el.querySelector('.pf-del-btn').onclick = function(e){ e.stopPropagation(); deleteItem('reel', r.id, el); };
-      el.onclick = () => window.location.href = '/chat#reels';
       grid.appendChild(el);
     });
   } catch(e){}
@@ -741,6 +748,220 @@ async function loadMyPosts(){
 }
 
 document.addEventListener('DOMContentLoaded', loadMyReels);
+</script>
+
+<!-- ====== FOLLOWERS / FOLLOWING MODAL ====== -->
+<style>
+.fl-backdrop{
+  display:none;position:fixed;inset:0;z-index:9500;
+  background:rgba(0,0,0,.5);backdrop-filter:blur(8px);
+  align-items:center;justify-content:center;
+}
+.fl-backdrop.open{display:flex}
+.fl-modal{
+  background:var(--white);border-radius:22px;width:92%;max-width:420px;
+  max-height:75vh;display:flex;flex-direction:column;
+  box-shadow:var(--shadow-lg);overflow:hidden;
+}
+.fl-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px solid var(--glass-border);
+}
+.fl-header h3{font-weight:800;font-size:.95rem;color:var(--charcoal);margin:0}
+.fl-close{
+  width:32px;height:32px;border-radius:50%;border:none;
+  background:var(--ivory);cursor:pointer;display:flex;
+  align-items:center;justify-content:center;transition:all .2s;
+}
+.fl-close:hover{background:var(--sand)}
+.fl-close svg{width:16px;height:16px;fill:var(--charcoal)}
+.fl-tabs{
+  display:flex;border-bottom:1px solid var(--glass-border);
+}
+.fl-tab{
+  flex:1;padding:11px 0;text-align:center;font-weight:700;font-size:.8rem;
+  color:var(--muted);cursor:pointer;border:none;background:none;
+  border-bottom:2.5px solid transparent;transition:all .2s;
+  font-family:'Plus Jakarta Sans',sans-serif;
+}
+.fl-tab.active{color:var(--charcoal);border-bottom-color:var(--charcoal)}
+.fl-list{
+  flex:1;overflow-y:auto;padding:8px 0;
+}
+.fl-list::-webkit-scrollbar{width:4px}
+.fl-list::-webkit-scrollbar-thumb{background:var(--sand);border-radius:4px}
+.fl-empty{
+  text-align:center;padding:40px 20px;color:var(--muted);font-size:.85rem;
+}
+.fl-item{
+  display:flex;align-items:center;gap:12px;padding:10px 20px;
+  transition:background .15s;
+}
+.fl-item:hover{background:var(--ivory)}
+.fl-item img{
+  width:44px;height:44px;border-radius:50%;object-fit:cover;
+  border:2px solid var(--glass-border);flex-shrink:0;
+}
+.fl-item-info{flex:1;min-width:0}
+.fl-item-name{
+  font-weight:700;font-size:.85rem;color:var(--charcoal);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.fl-item-btn{
+  padding:7px 16px;border-radius:12px;font-weight:700;font-size:.75rem;
+  cursor:pointer;border:none;transition:all .2s;flex-shrink:0;
+  font-family:'Plus Jakarta Sans',sans-serif;
+}
+.fl-btn-unfollow{background:var(--ivory);color:var(--charcoal);border:1.5px solid var(--glass-border)}
+.fl-btn-unfollow:hover{background:var(--sand)}
+.fl-btn-follow{background:var(--charcoal);color:var(--white)}
+.fl-btn-follow:hover{opacity:.85}
+.fl-btn-followback{background:var(--charcoal);color:var(--white);border:none}
+.fl-btn-followback:hover{opacity:.85}
+.fl-btn-following{background:var(--ivory);color:var(--muted);border:1.5px solid var(--glass-border);cursor:default}
+.fl-btn-remove{background:var(--ivory);color:#c0392b;border:1.5px solid rgba(192,57,43,.2)}
+.fl-btn-remove:hover{background:rgba(192,57,43,.08)}
+.fl-item-actions{display:flex;gap:6px;align-items:center;flex-shrink:0}
+</style>
+
+<div class="fl-backdrop" id="flBackdrop" onclick="if(event.target===this)closeFollowModal()">
+  <div class="fl-modal">
+    <div class="fl-header">
+      <h3 id="flTitle">Followers</h3>
+      <button class="fl-close" onclick="closeFollowModal()">
+        <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
+    </div>
+    <div class="fl-tabs">
+      <button class="fl-tab active" id="flTabFollowers" onclick="switchFollowTab('followers')">Followers</button>
+      <button class="fl-tab" id="flTabFollowing" onclick="switchFollowTab('following')">Following</button>
+    </div>
+    <div class="fl-list" id="flList"></div>
+  </div>
+</div>
+
+<script>
+let currentFollowTab = 'followers';
+
+function openFollowModal(tab) {
+  currentFollowTab = tab;
+  document.getElementById('flBackdrop').classList.add('open');
+  switchFollowTab(tab);
+}
+function closeFollowModal() {
+  document.getElementById('flBackdrop').classList.remove('open');
+}
+
+function switchFollowTab(tab) {
+  currentFollowTab = tab;
+  document.getElementById('flTabFollowers').classList.toggle('active', tab === 'followers');
+  document.getElementById('flTabFollowing').classList.toggle('active', tab === 'following');
+  document.getElementById('flTitle').textContent = tab === 'followers' ? 'Followers' : 'Following';
+  loadFollowList(tab);
+}
+
+async function loadFollowList(tab) {
+  const list = document.getElementById('flList');
+  list.innerHTML = '<div class="fl-empty">Loading...</div>';
+  try {
+    const url = tab === 'followers' ? '/api/my_followers' : '/api/my_following';
+    const res = await fetch(url);
+    const users = await res.json();
+    if (!users.length) {
+      list.innerHTML = '<div class="fl-empty">No ' + tab + ' yet</div>';
+      return;
+    }
+    list.innerHTML = '';
+    users.forEach(u => {
+      const div = document.createElement('div');
+      div.className = 'fl-item';
+      const pic = u.profile_pic ? '/static/uploads/' + u.profile_pic : '/static/Images/profile.png';
+      if (tab === 'followers') {
+        const fbBtn = u.i_follow_them
+          ? '<button class="fl-item-btn fl-btn-following" disabled>Following ✓</button>'
+          : '<button class="fl-item-btn fl-btn-followback" onclick="followBack(' + u.id + ', this)">Follow Back</button>';
+        div.innerHTML = '<img src="' + pic + '" alt="" style="cursor:pointer" onclick="location.href=\'/user_profile/' + u.id + '\'">' +
+          '<div class="fl-item-info"><div class="fl-item-name" style="cursor:pointer" onclick="location.href=\'/user_profile/' + u.id + '\'">' + u.username + '</div></div>' +
+          '<div class="fl-item-actions">' + fbBtn + '<button class="fl-item-btn fl-btn-remove" onclick="removeFollower(' + u.id + ', this)">Remove</button></div>';
+      } else {
+        div.innerHTML = '<img src="' + pic + '" alt="" style="cursor:pointer" onclick="location.href=\'/user_profile/' + u.id + '\'">' +
+          '<div class="fl-item-info"><div class="fl-item-name" style="cursor:pointer" onclick="location.href=\'/user_profile/' + u.id + '\'">' + u.username + '</div></div>' +
+          '<button class="fl-item-btn fl-btn-remove" onclick="unfollowFromList(' + u.id + ', this)">Remove</button>';
+      }
+      list.appendChild(div);
+    });
+  } catch (e) {
+    list.innerHTML = '<div class="fl-empty">Failed to load</div>';
+  }
+}
+
+async function removeFollower(userId, btn) {
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const res = await fetch('/api/remove_follower', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({user_id: userId})
+    });
+    const data = await res.json();
+    if (data.success) {
+      btn.closest('.fl-item').remove();
+      document.getElementById('followerCountEl').textContent = data.follower_count;
+      const remaining = document.querySelectorAll('#flList .fl-item').length;
+      if (!remaining) document.getElementById('flList').innerHTML = '<div class="fl-empty">No followers yet</div>';
+    }
+  } catch (e) {
+    btn.textContent = 'Remove';
+    btn.disabled = false;
+  }
+}
+
+async function followBack(userId, btn) {
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const res = await fetch('/api/follow', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({user_id: userId})
+    });
+    const data = await res.json();
+    if (data.success) {
+      btn.textContent = 'Following ✓';
+      btn.className = 'fl-item-btn fl-btn-following';
+      btn.disabled = true;
+    } else {
+      btn.textContent = 'Follow Back';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    btn.textContent = 'Follow Back';
+    btn.disabled = false;
+  }
+}
+
+async function unfollowFromList(userId, btn) {
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const res = await fetch('/api/unfollow', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({user_id: userId})
+    });
+    const data = await res.json();
+    if (data.success) {
+      btn.closest('.fl-item').remove();
+      const cnt = document.querySelectorAll('#flList .fl-item').length;
+      document.getElementById('followingCountEl').textContent = cnt;
+      if (!cnt) document.getElementById('flList').innerHTML = '<div class="fl-empty">No following yet</div>';
+    }
+  } catch (e) {
+    btn.textContent = 'Unfollow';
+    btn.disabled = false;
+  }
+}
 </script>
 </body>
 </html>

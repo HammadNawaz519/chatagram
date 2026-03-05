@@ -116,6 +116,14 @@
     .pf-stat+.pf-stat{border-left:1px solid var(--glass-border)}
     .pf-stat-num{font-weight:800;font-size:1.1rem;line-height:1.2;color:var(--charcoal)}
     .pf-stat-lbl{font-size:.62rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-top:2px}
+    button.pf-stat{
+      border:none;background:none;cursor:pointer;
+      font-family:'Plus Jakarta Sans',sans-serif;
+      transition:background .2s;
+    }
+    button.pf-stat *{cursor:pointer;user-select:none}
+    button.pf-stat:hover{background:var(--sand)}
+    button.pf-stat:active{background:var(--glass-border)}
 
     /* Buttons */
     .pf-actions{display:flex;gap:10px;width:100%}
@@ -253,14 +261,14 @@
           <div class="pf-stat-num">{{ reel_count }}</div>
           <div class="pf-stat-lbl">Posts</div>
         </div>
-        <div class="pf-stat">
+        <button class="pf-stat" onclick="openUPModal('followers')">
           <div class="pf-stat-num" id="followerCount">{{ follower_count }}</div>
           <div class="pf-stat-lbl">Followers</div>
-        </div>
-        <div class="pf-stat">
+        </button>
+        <button class="pf-stat" onclick="openUPModal('following')">
           <div class="pf-stat-num">{{ following_count }}</div>
           <div class="pf-stat-lbl">Following</div>
-        </div>
+        </button>
       </div>
 
       <!-- Follow / Block buttons -->
@@ -378,6 +386,120 @@ async function loadUserReels(){
 }
 
 document.addEventListener('DOMContentLoaded',loadUserReels);
+</script>
+
+<!-- ====== FOLLOWERS / FOLLOWING MODAL (view-only) ====== -->
+<style>
+.up-backdrop{
+  display:none;position:fixed;inset:0;z-index:9500;
+  background:rgba(0,0,0,.5);backdrop-filter:blur(8px);
+  align-items:center;justify-content:center;
+}
+.up-backdrop.open{display:flex}
+.up-modal{
+  background:var(--white);border-radius:22px;width:92%;max-width:400px;
+  max-height:72vh;display:flex;flex-direction:column;
+  box-shadow:var(--shadow-lg);overflow:hidden;
+}
+.up-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px solid var(--glass-border);
+}
+.up-header h3{font-weight:800;font-size:.95rem;color:var(--charcoal);margin:0}
+.up-close{
+  width:32px;height:32px;border-radius:50%;border:none;
+  background:var(--ivory);cursor:pointer;display:flex;
+  align-items:center;justify-content:center;transition:all .2s;
+}
+.up-close:hover{background:var(--sand)}
+.up-close svg{width:16px;height:16px;fill:var(--charcoal)}
+.up-tabs{
+  display:flex;border-bottom:1px solid var(--glass-border);
+}
+.up-tab{
+  flex:1;padding:11px 0;text-align:center;font-weight:700;font-size:.8rem;
+  color:var(--muted);cursor:pointer;border:none;background:none;
+  border-bottom:2.5px solid transparent;transition:all .2s;
+  font-family:'Plus Jakarta Sans',sans-serif;
+}
+.up-tab.active{color:var(--charcoal);border-bottom-color:var(--charcoal)}
+.up-list{
+  flex:1;overflow-y:auto;padding:8px 0;
+}
+.up-list::-webkit-scrollbar{width:4px}
+.up-list::-webkit-scrollbar-thumb{background:var(--sand);border-radius:4px}
+.up-empty{
+  text-align:center;padding:40px 20px;color:var(--muted);font-size:.85rem;
+}
+.up-item{
+  display:flex;align-items:center;gap:12px;padding:10px 20px;
+  text-decoration:none;cursor:default;
+}
+.up-item:hover{background:none}
+.up-item img{
+  width:44px;height:44px;border-radius:50%;object-fit:cover;
+  border:2px solid var(--glass-border);flex-shrink:0;
+}
+.up-item-name{
+  font-weight:700;font-size:.85rem;color:var(--charcoal);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;
+}
+</style>
+
+<div class="up-backdrop" id="upBackdrop" onclick="if(event.target===this)closeUPModal()">
+  <div class="up-modal">
+    <div class="up-header">
+      <h3 id="upTitle">Followers</h3>
+      <button class="up-close" onclick="closeUPModal()">
+        <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
+    </div>
+    <div class="up-tabs">
+      <button class="up-tab active" id="upTabFollowers" onclick="switchUPTab('followers')">Followers</button>
+      <button class="up-tab" id="upTabFollowing" onclick="switchUPTab('following')">Following</button>
+    </div>
+    <div class="up-list" id="upList"></div>
+  </div>
+</div>
+
+<script>
+function openUPModal(tab) {
+  document.getElementById('upBackdrop').classList.add('open');
+  switchUPTab(tab);
+}
+function closeUPModal() {
+  document.getElementById('upBackdrop').classList.remove('open');
+}
+function switchUPTab(tab) {
+  document.getElementById('upTabFollowers').classList.toggle('active', tab==='followers');
+  document.getElementById('upTabFollowing').classList.toggle('active', tab==='following');
+  document.getElementById('upTitle').textContent = tab==='followers' ? 'Followers' : 'Following';
+  loadUPList(tab);
+}
+async function loadUPList(tab) {
+  const list = document.getElementById('upList');
+  list.innerHTML = '<div class="up-empty">Loading...</div>';
+  try {
+    const url = '/api/user/' + TARGET_ID + '/' + tab;
+    const res = await fetch(url);
+    const users = await res.json();
+    if (!users.length) {
+      list.innerHTML = '<div class="up-empty">No ' + tab + ' yet</div>';
+      return;
+    }
+    list.innerHTML = '';
+    users.forEach(u => {
+      const div = document.createElement('div');
+      div.className = 'up-item';
+      const pic = u.profile_pic ? '/static/uploads/' + u.profile_pic : '/static/Images/profile.png';
+      div.innerHTML = '<img src="' + pic + '" alt="">' +
+        '<div class="up-item-name">' + u.username + '</div>';
+      list.appendChild(div);
+    });
+  } catch(e) {
+    list.innerHTML = '<div class="up-empty">Failed to load</div>';
+  }
+}
 </script>
 </body>
 </html>

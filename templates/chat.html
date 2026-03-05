@@ -6,6 +6,9 @@
   <meta name="theme-color" content="#F0F0DB" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>Chit Chat</title>
   <link rel="icon" type="image/png" href="/static/Images/chit_chat.png">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -31,7 +34,7 @@
   --card-radius: 40px;
   --item-radius: 24px;
   --gap: 20px;
-  --header-height: 72px;
+  --header-height: 0px;
   --nav-width: 72px;
   --shadow-sm: 0 4px 20px rgba(26,28,35,0.06);
   --shadow-md: 0 8px 30px rgba(26,28,35,0.08);
@@ -95,20 +98,17 @@ body{background-color:var(--ivory);background-image:linear-gradient(135deg,var(-
    TOP HEADER
    ========================================= */
 .app-top{
-  width:calc(100% - 48px);max-width:1400px;height:calc(var(--header-height) - 16px);
-  display:flex;justify-content:space-between;align-items:center;padding:0 24px;
-  margin:16px auto 0;background:var(--glass);backdrop-filter:blur(var(--blur));
-  border-radius:var(--card-radius);border:1px solid var(--glass-border);
-  box-shadow:var(--shadow-premium);z-index:1000;position:relative;
+  display:none;
 }
 .brand-inline{display:flex;align-items:center;gap:14px}
 .brand-mark{width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:16px;transition:all .4s cubic-bezier(.175,.885,.32,1.275);box-shadow:var(--shadow-sm)}
 .brand-mark img{max-width:100%;max-height:100%;object-fit:contain;border-radius:10px}
 .brand-mark:hover{transform:scale(1.1) rotate(-3deg);box-shadow:var(--shadow-md)}
 .brand-title{font-weight:700;font-size:1.25rem;letter-spacing:-.5px;color:var(--charcoal)}
-.profile-link{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--white);color:var(--charcoal);text-decoration:none;transition:all .3s;box-shadow:var(--shadow-sm);border:1px solid rgba(225,217,188,.5)}
+.profile-link{width:44px;height:44px;border-radius:50%;display:none;align-items:center;justify-content:center;background:var(--white);color:var(--charcoal);text-decoration:none;transition:all .3s;box-shadow:var(--shadow-sm);border:1px solid rgba(225,217,188,.5);overflow:hidden}
 .profile-link:hover{background:var(--sand);transform:translateY(-2px) scale(1.05);box-shadow:var(--shadow-md)}
 .profile-link svg{width:22px;height:22px}
+.profile-link img{width:100%;height:100%;object-fit:cover}
 .header-section-title{font-weight:700;font-size:1rem;color:var(--charcoal);text-transform:capitalize}
 
 /* =========================================
@@ -179,7 +179,14 @@ body{background-color:var(--ivory);background-image:linear-gradient(135deg,var(-
 .msg.sent{background:var(--charcoal);color:var(--white);border-bottom-right-radius:8px;box-shadow:0 4px 15px rgba(26,28,35,.2)}
 .msg.received{background:var(--accent);color:var(--recv-text);border-bottom-left-radius:8px;box-shadow:0 4px 15px rgba(26,28,35,.06);border:1px solid rgba(225,217,188,.4)}
 .msg.deleted-msg{opacity:.6;font-style:italic}
-.msg img,.msg video{max-width:100%;border-radius:16px;margin-bottom:8px;display:block;box-shadow:var(--shadow-sm)}
+.msg img,.msg video{width:220px;height:180px;object-fit:cover;border-radius:16px;margin-bottom:8px;display:block;box-shadow:var(--shadow-sm);cursor:pointer;flex-shrink:0}
+.msg-media-placeholder{width:220px;height:180px;border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;overflow:hidden;position:relative;flex-shrink:0}
+.msg-media-placeholder::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent 25%,rgba(255,255,255,.18) 50%,transparent 75%);background-size:200% 100%;animation:chatShimmer 1.4s infinite}
+.msg.sent .msg-media-placeholder{background:rgba(255,255,255,.12)}
+.msg.received .msg-media-placeholder{background:rgba(26,28,35,.08)}
+@keyframes chatShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.msg-media-placeholder-icon{font-size:2.2rem;opacity:.55;position:relative;z-index:1}
+.msg-media-placeholder-label{font-size:.72rem;font-weight:700;opacity:.5;position:relative;z-index:1;letter-spacing:.3px}
 .msg audio{width:100%;min-width:220px;height:40px;margin-top:5px;filter:grayscale(1) invert(1) brightness(1.2)}
 .msg.received audio{filter:brightness(.9)}
 .msg .time-row{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:6px;font-size:.75rem;font-weight:600;opacity:.7}
@@ -197,7 +204,7 @@ body{background-color:var(--ivory);background-image:linear-gradient(135deg,var(-
 .msg-wrapper.received{align-items:flex-start}
 .msg-actions{
   display:flex;flex-direction:row;align-items:center;gap:2px;
-  opacity:0;transition:opacity .18s;pointer-events:none;margin-top:6px;
+  opacity:0;transition:opacity .18s;pointer-events:none;margin-top:2px;
   background:var(--white);border:1px solid var(--glass-border);
   border-radius:24px;padding:4px 6px;
   box-shadow:var(--shadow-sm);
@@ -225,10 +232,34 @@ body{background-color:var(--ivory);background-image:linear-gradient(135deg,var(-
 .msg-action-btn:hover{background:rgba(255,59,48,.1);transform:scale(1.15)}
 
 /* REACTION BADGES */
-.msg-reactions{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap}
+.msg-reactions{display:flex;gap:4px;margin-top:2px;flex-wrap:wrap}
 .reaction-badge{display:inline-flex;align-items:center;gap:2px;padding:2px 8px;background:var(--white);border-radius:12px;font-size:.8rem;box-shadow:var(--shadow-sm);border:1px solid var(--glass-border);cursor:pointer;transition:all .2s}
 .reaction-badge:hover{transform:scale(1.1);box-shadow:var(--shadow-md)}
 .reaction-badge.mine{background:var(--ivory);border-color:var(--sand)}
+
+/* Desktop: action bar floats just below bubble; reactions stay in normal flow */
+@media(min-width:981px){
+  .msg-wrapper{padding-bottom:32px}
+  .msg-actions{
+    position:absolute;
+    bottom:2px;
+    margin-top:0;
+    z-index:15;
+  }
+  .msg-wrapper.sent .msg-actions{right:0;margin-left:0}
+  .msg-wrapper.received .msg-actions{left:0;margin-right:0}
+
+  /* Reactions flow naturally just below the bubble — no absolute positioning */
+  .msg-reactions{
+    position:static;
+    top:auto;
+    bottom:auto;
+    margin-top:3px;
+    z-index:auto;
+  }
+  .msg-wrapper.sent .msg-reactions{right:auto;left:auto}
+  .msg-wrapper.received .msg-reactions{right:auto;left:auto}
+}
 
 /* REPLY QUOTE inside message bubble */
 .reply-quote{
@@ -376,7 +407,7 @@ body{background-color:var(--ivory);background-image:linear-gradient(135deg,var(-
    MOBILE RESPONSIVE
    ========================================= */
 @media(max-width:980px){
-  :root{--header-height:70px;--card-radius:32px;--item-radius:24px;--gap:12px;--nav-width:0px}
+  :root{--header-height:0px;--card-radius:32px;--item-radius:24px;--gap:12px;--nav-width:0px}
   body{background:linear-gradient(180deg,var(--ivory) 0%,var(--cream) 100%);flex-direction:column}
   .left-nav{display:none}
   .app-body{margin-left:0;width:100%}
@@ -403,13 +434,13 @@ body{background-color:var(--ivory);background-image:linear-gradient(135deg,var(-
   .bottom-nav .bnav-item.center-btn svg{width:26px;height:26px}
   .bottom-nav .bnav-item.center-btn.active{background:#2A2C33}
   .bottom-nav .bnav-item .notif-badge{position:absolute;top:0;right:2px;min-width:16px;height:16px;background:#FF3B30;color:#fff;font-size:.55rem;font-weight:800;border-radius:8px;display:none;align-items:center;justify-content:center;padding:0 3px}
-  .app-top{width:calc(100% - 24px);height:56px;margin:12px auto;padding:0 20px;border-radius:28px;position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:1000}
+  .app-top{display:none}
   .brand-title{display:none}
   .brand-mark{display:flex;width:32px;height:32px;border-radius:10px;margin-right:0}
   .header-section-title{position:absolute;left:50%;transform:translateX(-50%);font-size:1.05rem;font-weight:800}
-  .profile-link{width:36px;height:36px}
-  .wrap{padding:0;padding-top:80px;height:100vh;height:100dvh;overflow:hidden}
-  .page-section{padding-top:80px;padding-bottom:90px;height:100vh;height:100dvh}
+  .profile-link{width:36px;height:36px;display:flex}
+  .wrap{padding:0;padding-top:12px;height:100vh;height:100dvh;overflow:hidden}
+  .page-section{padding-top:12px;padding-bottom:90px;height:100vh;height:100dvh}
   .sidebar{width:100%;height:100%;border-radius:0;border:none;background:transparent;backdrop-filter:none;box-shadow:none}
   .sidebar.hidden{display:none}
   .search-wrap{padding:12px 20px;background:var(--glass);backdrop-filter:blur(20px);border-radius:24px;margin:0 16px 16px;border:1px solid var(--glass-border)}
@@ -466,10 +497,10 @@ body{background-color:var(--ivory);background-image:linear-gradient(135deg,var(-
 }
 @media(max-width:480px){
   :root{--card-radius:28px}
-  .app-top{width:calc(100% - 20px);height:52px;padding:0 16px;border-radius:26px}
+  .app-top{display:none}
   .header-section-title{font-size:.95rem}
-  .wrap{padding-top:72px}
-  .page-section{padding-top:72px}
+  .wrap{padding-top:12px}
+  .page-section{padding-top:12px}
   .list{padding:0 12px 16px}
   .list .item{padding:14px;border-radius:22px}
   .list .item .user-pfp{width:48px;height:48px;border-radius:16px}
@@ -490,7 +521,7 @@ body{background-color:var(--ivory);background-image:linear-gradient(135deg,var(-
   .bottom-nav .bnav-item.center-btn svg{width:22px;height:22px}
 }
 @media(max-width:375px){
-  .app-top{height:48px}
+  .app-top{display:none}
   .brand-mark{width:32px;height:32px}
   .chat-header{height:56px}
   .chat-header .back-btn{width:38px;height:38px}
@@ -574,9 +605,6 @@ body{background-color:var(--ivory);background-image:linear-gradient(135deg,var(-
   <button class="nav-item" data-section="calls" title="Calls">
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
   </button>
-  <button class="nav-item" data-section="status" title="Status">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
-  </button>
   <button class="nav-item" data-section="reels" title="Reels">
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>
   </button>
@@ -612,7 +640,11 @@ body{background-color:var(--ivory);background-image:linear-gradient(135deg,var(-
     <span class="header-section-title" id="headerSectionTitle"></span>
     <div style="display:flex;align-items:center;gap:16px">
       <a href="/profile" class="profile-link" title="Profile">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        {% if my_profile_pic and my_profile_pic != 'default_profile.png' %}
+          <img src="/static/uploads/{{ my_profile_pic }}">
+        {% else %}
+          <img src="/static/Images/profile.png">
+        {% endif %}
       </a>
     </div>
   </header>
@@ -720,20 +752,20 @@ body{background-color:var(--ivory);background-image:linear-gradient(135deg,var(-
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
     <span>Home</span>
   </button>
-  <button class="bnav-item" data-section="reels">
-    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>
-    <span>Reels</span>
+  <button class="bnav-item" data-section="calls">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+    <span>Calls</span>
   </button>
   <button class="bnav-item center-btn" data-section="chats">
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
   </button>
-  <button class="bnav-item" data-section="status">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
-    <span>Status</span>
+  <button class="bnav-item" data-section="reels">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>
+    <span>Reels</span>
   </button>
-  <button class="bnav-item" data-section="calls">
-    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
-    <span>Calls</span>
+  <button class="bnav-item" onclick="window.location.href='/profile'">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+    <span>Profile</span>
   </button>
 </nav>
 
@@ -756,10 +788,6 @@ body{background-color:var(--ivory);background-image:linear-gradient(135deg,var(-
       <div class="co-icon">💬</div>
       <div><div class="co-label">New Message</div><div class="co-desc">Start a new conversation</div></div>
     </div>
-    <div class="create-option" onclick="hideCreatePopup();triggerUpload('status')">
-      <div class="co-icon">📸</div>
-      <div><div class="co-label">Upload Status</div><div class="co-desc">Share a photo or video moment</div></div>
-    </div>
     <div class="create-option" onclick="hideCreatePopup();triggerUpload('song')">
       <div class="co-icon">🎵</div>
       <div><div class="co-label">Share Song</div><div class="co-desc">Upload music to share</div></div>
@@ -768,6 +796,10 @@ body{background-color:var(--ivory);background-image:linear-gradient(135deg,var(-
       <div class="co-icon">🎬</div>
       <div><div class="co-label">Upload Reel</div><div class="co-desc">Create a short video</div></div>
     </div>
+    <div class="create-option" onclick="hideCreatePopup();triggerUpload('post')">
+      <div class="co-icon">🖼️</div>
+      <div><div class="co-label">Upload Post</div><div class="co-desc">Share a photo or video permanently</div></div>
+    </div>
   </div>
 </div>
 
@@ -775,6 +807,7 @@ body{background-color:var(--ivory);background-image:linear-gradient(135deg,var(-
 <input type="file" id="statusFileInput" style="display:none" accept="image/*,video/*">
 <input type="file" id="reelFileInput" style="display:none" accept="video/*">
 <input type="file" id="songFileInput" style="display:none" accept="audio/*">
+<input type="file" id="postFileInput" style="display:none" accept="image/*,video/*">
 <input type="file" id="songCoverInput" style="display:none" accept="image/*">
 
 <!-- ====== UPLOAD MODAL ====== -->
@@ -939,17 +972,42 @@ attachFile.onchange = (e) => {
   if (isSending || sendCooldown) return;
   const file = e.target.files[0];
   if (!file || !currentReceiver) return;
+  const type = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : null;
+  if (!type) { attachFile.value = ''; return; }
   isSending = true; sendCooldown = true;
+  /* Show optimistic placeholder immediately */
+  const tempId = 'tmp-' + Date.now();
+  appendMediaPlaceholder(tempId, type);
   const reader = new FileReader();
   reader.onload = (ev) => {
-    const type = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : null;
-    if(type) socket.emit('send_message', {sender:myId,receiver:currentReceiver,message:ev.target.result,filename:file.name,type});
+    socket.emit('send_message', {sender:myId,receiver:currentReceiver,message:ev.target.result,filename:file.name,type,tempId});
     setTimeout(()=>{isSending=false},300);
     setTimeout(()=>{sendCooldown=false},600);
   };
   reader.readAsDataURL(file);
   attachFile.value = '';
 };
+
+function appendMediaPlaceholder(tempId, type){
+  const wrapper=document.createElement('div');
+  wrapper.classList.add('msg-wrapper','sent');
+  wrapper.dataset.tempId=tempId;
+  const div=document.createElement('div');div.classList.add('msg','sent');
+  const icon=type==='image'?'🖼️':type==='video'?'🎬':'📎';
+  const ph=document.createElement('div');ph.className='msg-media-placeholder';
+  ph.innerHTML='<span class="msg-media-placeholder-icon">'+icon+'</span><span class="msg-media-placeholder-label">Sending…</span>';
+  div.appendChild(ph);
+  const tr=document.createElement('div');tr.className='time-row';
+  const tm=document.createElement('span');
+  tm.textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:true});
+  tr.appendChild(tm);
+  const s=document.createElement('span');s.className='seen-status';s.innerHTML=doubleTickIcon;
+  tr.appendChild(s);
+  div.appendChild(tr);
+  wrapper.appendChild(div);
+  messagesDiv.appendChild(wrapper);
+  messagesDiv.scrollTop=messagesDiv.scrollHeight;
+}
 
 msgInput.addEventListener('input', () => {
   if(msgInput.value.trim().length > 0){actionIcon.innerHTML=sendIconSVG;mainActionBtn.title="Send message"}
@@ -1268,7 +1326,15 @@ socket.on('online_users_list',list=>{onlineUsers=new Set(list.map(id=>parseInt(i
 socket.on('user_status',data=>{const uid=parseInt(data.user_id);if(data.online)onlineUsers.add(uid);else onlineUsers.delete(uid);updateOnlineUI()});
 socket.on('receive_message',data=>{
   const room='chat_'+Math.min(data.sender,data.receiver)+'_'+Math.max(data.sender,data.receiver);
-  if(room===currentRoom){appendMessage(data);if(data.sender!==myId)socket.emit('mark_as_read',{sender_id:data.sender,receiver_id:myId})}
+  if(room===currentRoom){
+    /* Remove optimistic placeholder for our own sent media */
+    if(data.sender===myId && data.tempId){
+      const ph=document.querySelector(`.msg-wrapper[data-temp-id="${data.tempId}"]`);
+      if(ph)ph.remove();
+    }
+    appendMessage(data);
+    if(data.sender!==myId)socket.emit('mark_as_read',{sender_id:data.sender,receiver_id:myId});
+  }
   loadRecentChats();
 });
 socket.on('messages_read',data=>{if(currentReceiver===data.reader_id)document.querySelectorAll('.msg.sent .seen-status').forEach(el=>el.classList.add('is-seen'))});
@@ -1412,6 +1478,7 @@ function triggerUpload(type) {
   if (type === 'status') document.getElementById('statusFileInput').click();
   else if (type === 'reel') document.getElementById('reelFileInput').click();
   else if (type === 'song') document.getElementById('songFileInput').click();
+  else if (type === 'post') document.getElementById('postFileInput').click();
 }
 
 document.getElementById('statusFileInput').addEventListener('change', function() {
@@ -1424,6 +1491,10 @@ document.getElementById('reelFileInput').addEventListener('change', function() {
 });
 document.getElementById('songFileInput').addEventListener('change', function() {
   if (this.files[0]) showUploadModal('song', this.files[0]);
+  this.value = '';
+});
+document.getElementById('postFileInput').addEventListener('change', function() {
+  if (this.files[0]) showUploadModal('post', this.files[0]);
   this.value = '';
 });
 
@@ -1463,6 +1534,21 @@ function showUploadModal(type, file) {
     vid.controls = true; vid.muted = true;
     preview.appendChild(vid);
     preview.classList.add('has-file');
+  } else if (type === 'post') {
+    title.textContent = 'Upload Post';
+    caption.placeholder = 'Add a caption...';
+    if (file.type.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(file);
+      preview.appendChild(img);
+      preview.classList.add('has-file');
+    } else if (file.type.startsWith('video/')) {
+      const vid = document.createElement('video');
+      vid.src = URL.createObjectURL(file);
+      vid.controls = true; vid.muted = true;
+      preview.appendChild(vid);
+      preview.classList.add('has-file');
+    }
   } else if (type === 'song') {
     title.textContent = 'Share Song';
     caption.placeholder = 'Song title...';
@@ -1518,6 +1604,13 @@ async function submitUpload() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Upload failed');
       switchSection('reels');
+    } else if (uploadType === 'post') {
+      fd.append('media', uploadFile);
+      fd.append('caption', caption);
+      const res = await fetch('/upload_post', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Upload failed');
+      switchSection('feed');
     } else if (uploadType === 'song') {
       fd.append('audio', uploadFile);
       fd.append('title', caption || uploadFile.name.split('.')[0]);
