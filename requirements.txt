@@ -3,6 +3,6 @@ flask-socketio
 flask-mail
 mysql-connector-python
 python-dotenv
-geventgit add .
+gevent
 gevent-websocket
 gunicorn

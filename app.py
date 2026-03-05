@@ -1,14 +1,15 @@
 import os
 import random
 import string
-import hashlib
 import base64
 import uuid
-from datetime import datetime
+import hashlib
+from datetime import datetime, timedelta
 
 from flask import Flask, render_template, request, redirect, session, jsonify, send_from_directory
 from flask_socketio import SocketIO, join_room, leave_room, emit
 from flask_mail import Mail, Message
+from werkzeug.security import generate_password_hash, check_password_hash
 import mysql.connector
 from dotenv import load_dotenv
 
@@ -79,7 +80,7 @@ mail = Mail(app)
 # FUNCTION: hash_pass
 ####################################################################
 def hash_pass(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+    return generate_password_hash(password)
 
 ####################################################################
 # FUNCTION: send_otp
@@ -144,34 +145,50 @@ def call_alias():
 ####################################################################
 @app.route('/login', methods=['GET','POST'])
 def login():
-    # ensure no old session data carries over – this makes the login
-    # form behave like a fresh start even if the user previously logged
-    # in on the same browser.
-    session.clear()
-
+    # If already logged in, go straight to chat
     if session.get('user_id'):
         return redirect('/chat')
+
+    # Clear any leftover session data so old sessions don't bleed in
+    session.clear()
+
     if request.method == 'POST' and 'phone' in request.form:
         db = get_db()
         cursor = db.cursor(dictionary=True)
 
         phone = request.form.get('phone')
-        password = hash_pass(request.form.get('password'))
+        raw_password = request.form.get('password', '')
 
-        cursor.execute("""
-            SELECT * FROM users 
-            WHERE phone_number=%s AND password=%s
-        """, (phone, password))
-
+        cursor.execute("SELECT * FROM users WHERE phone_number=%s", (phone,))
         user = cursor.fetchone()
-        cursor.close()
-        db.close()
 
         if user:
-            session['user_id'] = user['id']
-            return redirect('/chat')
+            stored = user['password']
+            # Detect legacy SHA-256 hash (plain 64-char hex) vs new Werkzeug hash
+            legacy_hash = hashlib.sha256(raw_password.encode()).hexdigest()
+            is_legacy = stored == legacy_hash
+            is_new = (not is_legacy) and check_password_hash(stored, raw_password)
 
-        return "Invalid login"
+            if is_legacy or is_new:
+                # Migrate legacy hash to secure Werkzeug hash on the fly
+                if is_legacy:
+                    new_hash = generate_password_hash(raw_password)
+                    migrate_cursor = db.cursor()
+                    migrate_cursor.execute(
+                        "UPDATE users SET password=%s WHERE id=%s",
+                        (new_hash, user['id'])
+                    )
+                    db.commit()
+                    migrate_cursor.close()
+
+                cursor.close()
+                db.close()
+                session['user_id'] = user['id']
+                return redirect('/chat')
+
+        cursor.close()
+        db.close()
+        return redirect('/login?error=Invalid+phone+number+or+password')
 
     return render_template('auth.html')
 
@@ -193,10 +210,11 @@ def register():
     if cursor.fetchone():
         cursor.close()
         db.close()
-        return "User already exists!"
+        return redirect('/login?tab=register&error=An+account+with+that+email+or+phone+already+exists')
 
     otp = send_otp(email)
     session['otp'] = otp
+    session['otp_expiry'] = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
     session['reg_data'] = {
         'username': username,
         'phone': phone,
@@ -228,7 +246,11 @@ def update_profile():
         return redirect('/profile')
 
     if file:
-        ext = file.filename.rsplit('.', 1)[1].lower()
+        ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'webp'}
+        parts = file.filename.rsplit('.', 1)
+        if len(parts) != 2 or parts[1].lower() not in ALLOWED_EXTENSIONS:
+            return redirect('/profile')
+        ext = parts[1].lower()
         filename = f"pfp_{session['user_id']}_{uuid.uuid4().hex}.{ext}"
         filepath = os.path.join(UPLOAD_FOLDER_PFP, filename)
         file.save(filepath)
@@ -309,11 +331,20 @@ def remove_profile_pic():
 @app.route('/verify', methods=['GET','POST'])
 def verify():
     if request.method == 'POST':
+        expiry_str = session.get('otp_expiry')
+        if expiry_str and datetime.utcnow() > datetime.fromisoformat(expiry_str):
+            session.pop('otp', None)
+            session.pop('otp_expiry', None)
+            session.pop('reg_data', None)
+            return redirect('/login?tab=register&error=OTP+expired.+Please+register+again')
+
         if request.form['otp'] == session.get('otp'):
             db = get_db()
             cursor = db.cursor()
 
             data = session.pop('reg_data')
+            session.pop('otp', None)
+            session.pop('otp_expiry', None)
             cursor.execute("""
                 INSERT INTO users (username, phone_number, email, password, verified)
                 VALUES (%s,%s,%s,%s,1)
@@ -324,7 +355,7 @@ def verify():
             db.close()
             return redirect('/login')
 
-        return "Invalid OTP"
+        return redirect('/verify?error=Invalid+OTP.+Please+try+again')
 
     return render_template('verify.html')
 
@@ -342,8 +373,10 @@ def chat():
 ####################################################################
 @app.route('/search_users')
 def search_users():
-    query = request.args.get('q', '')
     my_id = session.get('user_id')
+    if not my_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    query = request.args.get('q', '')
 
     db = get_db()
     cursor = db.cursor(dictionary=True)
@@ -368,6 +401,8 @@ def search_users():
 @app.route('/recent_chats')
 def recent_chats():
     my_id = session.get('user_id')
+    if not my_id:
+        return jsonify({'error': 'Unauthorized'}), 401
 
     db = get_db()
     cursor = db.cursor(dictionary=True)
@@ -399,6 +434,8 @@ def recent_chats():
 @app.route('/messages/<int:other_id>')
 def get_messages(other_id):
     my_id = session.get('user_id')
+    if not my_id:
+        return jsonify({'error': 'Unauthorized'}), 401
 
     db = get_db()
     cursor = db.cursor(dictionary=True)
@@ -466,7 +503,7 @@ def handle_user_online(data):
     # this event is triggered manually by the client when they come back
     # from a locked screen or similar.  treat it almost exactly like
     # connect: add the socket id and broadcast if this is the first one.
-    uid = data.get('user_id')
+    uid = session.get('user_id')
     if not uid:
         return
 
@@ -486,7 +523,21 @@ def handle_user_online(data):
 ####################################################################
 @socketio.on('join')
 def handle_join(data):
-    join_room(data['room'])
+    room = data.get('room', '')
+    uid = session.get('user_id')
+    if not uid or not room:
+        return
+    # For chat rooms, ensure the requesting user is a participant
+    if room.startswith('chat_'):
+        parts = room.split('_')
+        if len(parts) != 3:
+            return
+        try:
+            if uid not in {int(parts[1]), int(parts[2])}:
+                return
+        except ValueError:
+            return
+    join_room(room)
 
 ####################################################################
 # FUNCTION: handle_incoming_call
@@ -602,8 +653,11 @@ def handle_mark_as_read(data):
 ####################################################################
 @socketio.on('send_message')
 def handle_message(data):
-    sender = int(data['sender'])
+    sender = session.get('user_id')
+    if not sender:
+        return
     receiver = int(data['receiver'])
+    data['sender'] = sender  # enforce server-side sender identity
     msg_type = data.get('type', 'text')
     content = data['message']
 
@@ -760,4 +814,6 @@ def handle_call_ended(data):
 # -------- RUN --------
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
-    socketio.run(app, host='0.0.0.0', port=port, debug=True, allow_unsafe_werkzeug=True)
+    debug_mode = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    socketio.run(app, host='0.0.0.0', port=port, debug=debug_mode,
+                 allow_unsafe_werkzeug=debug_mode)
