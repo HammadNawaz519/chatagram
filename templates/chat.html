@@ -1085,7 +1085,8 @@ async function loadRecentChats(){
     rows.forEach(r=>{
       const div=document.createElement('div');div.className='item';div.dataset.uid=r.id;
       let dm=r.message||'';
-      if(dm.indexOf('voice/')!==-1)dm=" Voice message";
+      if(r.msg_type==='ai'||dm.indexOf('🤖')!==-1)dm="🤖 Message by AI";
+      else if(dm.indexOf('voice/')!==-1)dm=" Voice message";
       else if(dm.indexOf('images/')!==-1||dm.indexOf('data:image')!==-1)dm=" Sent a photo";
       else if(dm.indexOf('videos/')!==-1||dm.indexOf('data:video')!==-1)dm=" Sent a video";
       const pfp=(r.profile_pic&&r.profile_pic!=='default_profile.png')?`<img src="/static/uploads/${r.profile_pic}">`:`<img src="/static/Images/profile.png">`;

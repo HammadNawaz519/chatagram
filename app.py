@@ -772,6 +772,7 @@ def api_ai():
     if not api_key:
         return jsonify({'error': 'AI not configured'}), 503
     import requests as _req
+    from prompts import build_messages
     try:
         resp = _req.post(
             'https://openrouter.ai/api/v1/chat/completions',
@@ -781,7 +782,7 @@ def api_ai():
             },
             json={
                 'model': 'perplexity/sonar',
-                'messages': [{'role': 'user', 'content': message}],
+                'messages': build_messages(message),
                 'max_tokens': 600,
             },
             timeout=30
@@ -789,7 +790,7 @@ def api_ai():
         resp.raise_for_status()
         result = resp.json()
         choice = result['choices'][0]['message']
-        reply = choice.get('content') or choice.get('reasoning') or 'No response.'
+        reply = (choice.get('content') or choice.get('reasoning') or 'No response.').strip()
         return jsonify({'reply': reply})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1584,7 +1585,7 @@ def recent_chats():
     cursor = db.cursor(dictionary=True)
 
     cursor.execute("""
-        SELECT u.id, u.username, u.profile_pic, m.message, m.timestamp
+        SELECT u.id, u.username, u.profile_pic, m.message, m.type AS msg_type, m.timestamp
         FROM messages m
         JOIN users u
           ON u.id = IF(m.sender_id=%s, m.receiver_id, m.sender_id)
@@ -1599,6 +1600,8 @@ def recent_chats():
     for row in rows:
         if row['id'] not in seen:
             seen.add(row['id'])
+            if row.get('msg_type') == 'ai':
+                row['message'] = '🤖 Message by AI'
             recent.append(row)
 
     cursor.close()
@@ -1958,6 +1961,92 @@ def handle_react_message(data):
         }, room=room)
 
 ####################################################################
+# HELPER: _do_ai — runs in a background task to avoid blocking gevent
+####################################################################
+def _do_ai(question, sender, receiver, room):
+    """Call Gemini (primary) or OpenRouter (fallback) and emit the AI reply."""
+    import requests as _req
+    from prompts import build_messages, get_puff_local_reply
+
+    # Intercept identity questions locally — model ignores system prompt for these
+    local_reply = get_puff_local_reply(question)
+    if local_reply:
+        db2 = get_db()
+        cur2 = db2.cursor()
+        cur2.execute(
+            "INSERT INTO messages (sender_id, receiver_id, message, type) VALUES (%s, %s, %s, 'ai')",
+            (receiver, sender, local_reply)
+        )
+        ai_msg_id = cur2.lastrowid
+        cur2.close()
+        db2.close()
+        socketio.emit('receive_message', {
+            'id': ai_msg_id,
+            'sender': receiver, 'sender_id': receiver,
+            'receiver': sender, 'receiver_id': sender,
+            'message': local_reply, 'type': 'ai',
+            'timestamp': None, 'is_seen': 0
+        }, room=room)
+        socketio.emit('update_recents', room=str(sender))
+        socketio.emit('update_recents', room=str(receiver))
+        return
+
+    ai_reply = None
+
+    # --- OpenRouter (perplexity/sonar) ---
+    or_key = os.getenv('OPENROUTER_API_KEY')
+    if or_key:
+        try:
+            resp = _req.post(
+                'https://openrouter.ai/api/v1/chat/completions',
+                headers={'Authorization': f'Bearer {or_key}', 'Content-Type': 'application/json'},
+                json={'model': 'perplexity/sonar',
+                      'messages': build_messages(question),
+                      'max_tokens': 600},
+                timeout=30
+            )
+            resp.raise_for_status()
+            choice = resp.json()['choices'][0]['message']
+            ai_reply = (choice.get('content') or choice.get('reasoning') or '').strip()
+        except Exception as e:
+            print(f'OpenRouter error: {e}')
+
+    if not ai_reply:
+        ai_reply = 'My apologies, Sir — I seem to be momentarily indisposed. Do try again shortly.'
+
+    try:
+        db2 = get_db()
+        cur2 = db2.cursor()
+        cur2.execute(
+            "INSERT INTO messages (sender_id, receiver_id, message, type) VALUES (%s, %s, %s, 'ai')",
+            (receiver, sender, ai_reply)
+        )
+        ai_msg_id = cur2.lastrowid
+        cur2.close()
+        db2.close()
+        socketio.emit('receive_message', {
+            'id': ai_msg_id,
+            'sender': receiver,
+            'sender_id': receiver,
+            'receiver': sender,
+            'receiver_id': sender,
+            'message': ai_reply,
+            'type': 'ai',
+            'timestamp': None,
+            'is_seen': 0
+        }, room=room)
+        socketio.emit('update_recents', room=str(sender))
+        socketio.emit('update_recents', room=str(receiver))
+    except Exception as e:
+        print(f'AI db/emit error: {e}')
+        socketio.emit('receive_message', {
+            'sender': receiver, 'sender_id': receiver,
+            'receiver': sender, 'receiver_id': sender,
+            'message': ai_reply,
+            'type': 'ai', 'timestamp': None, 'is_seen': 0
+        }, room=room)
+
+####################################################################
 # FUNCTION: handle_message
 ####################################################################
 @socketio.on('send_message')
@@ -2017,6 +2106,13 @@ def handle_message(data):
     emit('receive_message', data, room=room)
     emit('update_recents', room=str(sender))
     emit('update_recents', room=str(receiver))
+
+    # ---- AI: if message starts with @AI, run reply in background task ----
+    import re as _re
+    if msg_type == 'text' and _re.match(r'^@ai\s+', content, _re.IGNORECASE):
+        question = _re.sub(r'^@ai\s+', '', content, flags=_re.IGNORECASE).strip()
+        if question:
+            socketio.start_background_task(_do_ai, question, sender, receiver, room)
 
 # ================= WEBRTC CALLING SIGNALING =================
 ####################################################################

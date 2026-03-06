@@ -97,6 +97,8 @@
 
 <script>
 (function () {
+  const aiIconSVG = '<svg viewBox="0 0 24 24"><path d="M12 2L9.09 8.26 2 9.27l5 4.87L5.82 21 12 17.77 18.18 21l-1.18-6.86L22 9.27l-7.09-1.01L12 2z"/></svg>';
+
   /* --------------------------------------------------
      Inject the suggestion popup div into .chat-area
   -------------------------------------------------- */
@@ -105,7 +107,7 @@
   suggestEl.id = 'aiSuggest';
   suggestEl.innerHTML =
     '<div class="ai-suggest-item" id="aiSuggestItem">' +
-      '<div class="ai-suggest-icon"><svg viewBox="0 0 24 24"><path d="M12 2L9.09 8.26 2 9.27l5 4.87L5.82 21 12 17.77 18.18 21l-1.18-6.86L22 9.27l-7.09-1.01L12 2z"/></svg></div>' +
+      '<div class="ai-suggest-icon">' + aiIconSVG + '</div>' +
       '<div><div class="ai-suggest-name">@AI</div>' +
       '<div class="ai-suggest-sub">Ask anything · searches web</div></div>' +
     '</div>';
@@ -156,90 +158,81 @@
   }, true);
 
   /* --------------------------------------------------
-     Patch sendMessage to intercept @AI messages
+     Patch sendMessage: show typing indicator when @AI sent
+     Backend handles the actual AI call + DB storage + emit
   -------------------------------------------------- */
   const _origSend = sendMessage;
+  let aiTypingId = null;
+
   sendMessage = function () {
     const msg = msgInput.value.trim();
     if (/^@ai\s+/i.test(msg) && currentReceiver) {
-      const question = msg.replace(/^@ai\s+/i, '').trim();
-      if (!question) return;
-      _origSend();       // send the "@AI ..." message normally in chat
-      askAI(question);   // then get AI reply
+      _origSend();
+      /* show typing indicator until receive_message arrives */
+      aiTypingId = 'ai-typing-' + Date.now();
+      const tw = document.createElement('div');
+      tw.className = 'msg-wrapper received';
+      tw.id = aiTypingId;
+      tw.innerHTML =
+        '<div class="ai-typing-wrapper">' +
+          '<div class="ai-typing-dot"></div>' +
+          '<div class="ai-typing-dot"></div>' +
+          '<div class="ai-typing-dot"></div>' +
+        '</div>';
+      messagesDiv.appendChild(tw);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
     } else {
       _origSend();
     }
   };
 
   /* --------------------------------------------------
-     AI call + bubble injection
+     Patch appendMessage to render type='ai' bubbles
   -------------------------------------------------- */
-  async function askAI(question) {
-    /* typing indicator */
-    const typingId = 'ai-typing-' + Date.now();
-    const typingWrapper = document.createElement('div');
-    typingWrapper.className = 'msg-wrapper received';
-    typingWrapper.id = typingId;
-    typingWrapper.innerHTML =
-      '<div class="ai-typing-wrapper">' +
-        '<div class="ai-typing-dot"></div>' +
-        '<div class="ai-typing-dot"></div>' +
-        '<div class="ai-typing-dot"></div>' +
-      '</div>';
-    messagesDiv.appendChild(typingWrapper);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-
-    try {
-      const res = await fetch('/api/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: question })
-      });
-      const data = await res.json();
-      const t = document.getElementById(typingId);
-      if (t) t.remove();
-
-      if (data.reply) {
-        injectAIBubble(data.reply);
-      } else {
-        injectAIBubble('Sorry, I could not get a response right now.', true);
+  const _origAppend = appendMessage;
+  appendMessage = function (data) {
+    if (data.type === 'ai') {
+      /* remove typing indicator if present */
+      if (aiTypingId) {
+        const t = document.getElementById(aiTypingId);
+        if (t) t.remove();
+        aiTypingId = null;
       }
-    } catch (e) {
-      const t = document.getElementById(typingId);
-      if (t) t.remove();
-      injectAIBubble('Sorry, I could not get a response right now.', true);
+      const wrapper = document.createElement('div');
+      wrapper.className = 'msg-wrapper received';
+      wrapper.dataset.msgId = data.id || '';
+
+      const bubble = document.createElement('div');
+      bubble.className = 'msg received ai-msg';
+
+      const cleaned = (data.message || '')
+        .replace(/\[\d+\]/g, '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+
+      const ts = data.timestamp || data.time || '';
+      const time = ts
+        ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+        : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+
+      bubble.innerHTML =
+        '<div class="ai-msg-header">' +
+          '<div class="ai-msg-icon">' + aiIconSVG + '</div>' +
+          '<span class="ai-msg-label">AI · Web</span>' +
+        '</div>' +
+        '<div>' + cleaned + '</div>' +
+        '<div class="time-row"><span>' + time + '</span></div>';
+
+      wrapper.appendChild(bubble);
+      messagesDiv.appendChild(wrapper);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    } else {
+      _origAppend(data);
     }
-  }
+  };
 
-  function injectAIBubble(text, isError) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'msg-wrapper received';
-    const bubble = document.createElement('div');
-    bubble.className = 'msg received ai-msg';
-
-    // Strip citation markers like [1][2] and format line breaks
-    const cleaned = text
-      .replace(/\[\d+\]/g, '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\n/g, '<br>');
-
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-    const aiIconSVG = '<svg viewBox="0 0 24 24"><path d="M12 2L9.09 8.26 2 9.27l5 4.87L5.82 21 12 17.77 18.18 21l-1.18-6.86L22 9.27l-7.09-1.01L12 2z"/></svg>';
-
-    bubble.innerHTML =
-      '<div class="ai-msg-header">' +
-        '<div class="ai-msg-icon">' + aiIconSVG + '</div>' +
-        '<span class="ai-msg-label">AI · Web</span>' +
-      '</div>' +
-      '<div style="' + (isError ? 'opacity:.6;font-style:italic' : '') + '">' + cleaned + '</div>' +
-      '<div class="time-row"><span>' + time + '</span></div>';
-
-    wrapper.appendChild(bubble);
-    messagesDiv.appendChild(wrapper);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-  }
 })();
 </script>
