@@ -2,6 +2,7 @@ flask
 flask-socketio
 flask-mail
 mysql-connector-python
+psycopg2-binary
 python-dotenv
 gevent
 gevent-websocket
