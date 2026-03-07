@@ -145,6 +145,46 @@ def get_weather_context(question: str) -> str | None:
         return None
 
 
+# ---------------------------------------------------------------------------
+# Web search helper — triggered for "latest", "news", "today" type questions.
+# Uses DuckDuckGo (free, no key). Falls back silently on any error.
+# ---------------------------------------------------------------------------
+_SEARCH_TRIGGERS = {
+    'latest', 'current', 'today', 'news', 'recent', 'live', 'update',
+    'yesterday', 'trending', 'price', 'stock', 'score', 'result',
+    'winner', 'happened', 'just', '2025', '2026', 'this week',
+    'this month', 'right now', 'who won', 'did win',
+}
+
+
+def get_search_context(question: str) -> str | None:
+    """
+    For questions about current events/news, do a DuckDuckGo web search and
+    return top results as a context string to inject into the prompt.
+    Returns None when not needed or if the search fails.
+    """
+    q = question.lower()
+    if 'weather' in q:
+        return None  # handled by weather module
+    if not any(w in q for w in _SEARCH_TRIGGERS):
+        return None
+    try:
+        from ddgs import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.text(question, max_results=4))
+        if not results:
+            return None
+        lines = ['[LIVE WEB SEARCH RESULTS — use these to answer accurately]']
+        for r in results:
+            title = r.get('title', '').strip()
+            body  = r.get('body', '').strip()[:250]
+            if title or body:
+                lines.append(f'- {title}: {body}')
+        return '\n'.join(lines) if len(lines) > 1 else None
+    except Exception:
+        return None
+
+
 # Patterns that models like perplexity/sonar always answer from their own training
 # regardless of the system prompt — we intercept these locally.
 _IDENTITY_PATTERNS = [
@@ -180,16 +220,18 @@ def get_puff_local_reply(question: str) -> str | None:
     return None
 
 
-def build_messages(question: str, weather_context: str | None = None) -> list:
+def build_messages(question: str, weather_context: str | None = None,
+                   search_context: str | None = None) -> list:
     """
     Returns the messages array to send to the model.
     Merges the system instruction into the user turn so models that
     don't support the 'system' role (e.g. Gemma) work correctly.
-    If weather_context is provided it is injected before the question so
-    Puff can answer with real live data.
+    weather_context and search_context are injected before the question
+    so Puff can answer with real live data.
     """
-    if weather_context:
-        user_content = f"{question.strip()}\n\n{weather_context}"
+    contexts = [c for c in (weather_context, search_context) if c]
+    if contexts:
+        user_content = f"{question.strip()}\n\n" + "\n".join(contexts)
     else:
         user_content = question.strip()
     combined = f"{AGENT_INSTRUCTION.strip()}\n\nUser: {user_content}\nPuff:"

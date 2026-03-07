@@ -772,8 +772,9 @@ def api_ai():
     if not api_key:
         return jsonify({'error': 'AI not configured'}), 503
     import requests as _req
-    from prompts import build_messages, get_weather_context
+    from prompts import build_messages, get_weather_context, get_search_context
     weather_ctx = get_weather_context(message)
+    search_ctx  = get_search_context(message)
     try:
         resp = _req.post(
             'https://openrouter.ai/api/v1/chat/completions',
@@ -783,7 +784,7 @@ def api_ai():
             },
             json={
                 'model': 'google/gemma-3-4b-it:free',
-                'messages': build_messages(message, weather_ctx),
+                'messages': build_messages(message, weather_ctx, search_ctx),
                 'max_tokens': 600,
             },
             timeout=30
@@ -1963,7 +1964,7 @@ def handle_react_message(data):
 def _do_ai(question, sender, receiver, room):
     """Call Gemini (primary) or OpenRouter (fallback) and emit the AI reply."""
     import requests as _req
-    from prompts import build_messages, get_puff_local_reply, get_weather_context
+    from prompts import build_messages, get_puff_local_reply, get_weather_context, get_search_context
 
     # Intercept identity questions locally â€” model ignores system prompt for these
     local_reply = get_puff_local_reply(question)
@@ -1993,13 +1994,14 @@ def _do_ai(question, sender, receiver, room):
     # --- OpenRouter (google/gemma-3-4b-it:free) ---
     or_key = os.getenv('OPENROUTER_API_KEY')
     weather_ctx = get_weather_context(question)
+    search_ctx  = get_search_context(question)
     if or_key:
         try:
             resp = _req.post(
                 'https://openrouter.ai/api/v1/chat/completions',
                 headers={'Authorization': f'Bearer {or_key}', 'Content-Type': 'application/json'},
                 json={'model': 'google/gemma-3-4b-it:free',
-                      'messages': build_messages(question, weather_ctx),
+                      'messages': build_messages(question, weather_ctx, search_ctx),
                       'max_tokens': 600},
                 timeout=30
             )
