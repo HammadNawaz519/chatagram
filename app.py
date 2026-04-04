@@ -1,9 +1,11 @@
-﻿import os
+﻿
+import os
 import random
 import string
 import base64
 import uuid
 from datetime import datetime, timedelta
+from werkzeug.security import generate_password_hash, check_password_hash
 
 from flask import Flask, render_template, request, redirect, session, jsonify, send_from_directory
 from flask_socketio import SocketIO, join_room, leave_room, emit
@@ -365,6 +367,7 @@ def call_alias():
 # FUNCTION: login
 ####################################################################
 @app.route('/login', methods=['GET','POST'])
+
 def login():
     # If already logged in, go straight to chat
     if session.get('user_id'):
@@ -383,7 +386,7 @@ def login():
         cursor.execute("SELECT * FROM users WHERE phone_number=%s", (phone,))
         user = cursor.fetchone()
 
-        if user and user['password'] == raw_password:
+        if user and check_password_hash(user['password'], raw_password):
             cursor.close()
             db.close()
             session['user_id'] = user['id']
@@ -399,6 +402,7 @@ def login():
 # FUNCTION: register
 ####################################################################
 @app.route('/register', methods=['POST'])
+
 def register():
     db = get_db()
     cursor = db.cursor(dictionary=True)
@@ -422,7 +426,7 @@ def register():
         'username': username,
         'phone': phone,
         'email': email,
-        'password': password
+        'password': generate_password_hash(password)
     }
 
     cursor.close()
@@ -1494,6 +1498,7 @@ def verify():
             data = session.pop('reg_data')
             session.pop('otp', None)
             session.pop('otp_expiry', None)
+
             cursor.execute("""
                 INSERT INTO users (username, phone_number, email, password, verified)
                 VALUES (%s,%s,%s,%s,1)
@@ -2208,5 +2213,15 @@ def handle_call_ended(data):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     debug_mode = os.getenv("FLASK_DEBUG", "false").lower() == "true"
-    socketio.run(app, host='0.0.0.0', port=port, debug=debug_mode,
-                 allow_unsafe_werkzeug=debug_mode)
+    host = os.getenv("HOST", "0.0.0.0")
+    print(f"* Open: http://127.0.0.1:{port}  (or http://localhost:{port})", flush=True)
+    try:
+        socketio.run(
+            app,
+            host=host,
+            port=port,
+            debug=debug_mode,
+            allow_unsafe_werkzeug=debug_mode,
+        )
+    except KeyboardInterrupt:
+        print("\n* Server stopped.", flush=True)

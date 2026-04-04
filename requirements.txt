@@ -7,4 +7,4 @@ gevent
 gevent-websocket
 gunicorn
 requests
-ddgspsycopg2-binary
+psycopg2-binary
